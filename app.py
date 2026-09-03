@@ -17,7 +17,6 @@ import db
 import calc
 import auth
 import notify
-import expense_pdf
 
 st.set_page_config(page_title="C&I Reimbursement Tracker", page_icon="💼", layout="wide")
 db.init_db()
@@ -539,289 +538,82 @@ with tabs[2]:
     default_month_index = prev_month_date.month - 1
     default_year = prev_month_date.year
 
-    bill_type = st.radio(
-        "Bill type",
-        ["Simple bill", "SkyElectric Expense Claim (multiple expenses, auto-generates PDF)"],
-        horizontal=True,
-    )
-
-    if bill_type == "Simple bill":
-        with st.form("add_bill_form", clear_on_submit=True):
-            if is_manager:
-                employee_name = st.selectbox("Employee", auth.all_employee_names())
-            else:
-                employee_name = current_user["display_name"]
-                st.text_input("Employee", value=employee_name, disabled=True)
-
-            description = st.text_input("Bill / Expense Description")
-
-            col1, col2 = st.columns(2)
-            with col1:
-                date_submitted = st.date_input("Date of Submission", value=date.today())
-                bill_amount = st.number_input("Bill Amount", min_value=0.0, step=100.0)
-                has_clearing_date = st.checkbox("Clearing date known?")
-                clearing_date = st.date_input("Clearing Date", value=date.today()) if has_clearing_date else None
-            with col2:
-                bmcol1, bmcol2 = st.columns(2)
-                with bmcol1:
-                    billing_month_name = st.selectbox(
-                        "Billing Month — which month's expenses is this for?",
-                        month_names, index=default_month_index)
-                with bmcol2:
-                    billing_year = st.number_input(
-                        "Year", min_value=2020, max_value=2100, value=default_year, step=1)
-                period = st.text_input("Period (e.g. 1 Aug - 15 Aug 2026)")
-                reimbursed_amount = st.number_input("Reimbursed Amount so far", min_value=0.0, step=100.0)
-                screenshot = st.file_uploader("Screenshot (optional)", type=["png", "jpg", "jpeg"])
-                approved_pdf = st.file_uploader("Original approved bill PDF (optional)", type=["pdf"])
-            remarks = st.text_area("Remarks")
-
-            billing_month_value = date(int(billing_year), month_names.index(billing_month_name) + 1, 1)
-            deadline = calc.billing_deadline(billing_month_value)
-            st.caption(f"Deadline to submit a {billing_month_name} {billing_year} bill: {deadline.strftime('%d %b %Y')}")
-
-            manager_override = False
-            if is_manager:
-                manager_override = st.checkbox(
-                    "Confirm late submission (only needed if past the deadline shown above)")
-
-            submitted = st.form_submit_button("Save bill", type="primary")
-            if submitted:
-                late = calc.is_late_submission(date_submitted, billing_month_value)
-                if not description.strip():
-                    st.error("Bill description is required.")
-                elif late and not is_manager:
-                    st.error(
-                        f"A {billing_month_name} {billing_year} bill must be submitted by "
-                        f"{deadline.strftime('%d %b %Y')}. This is late — please ask your "
-                        f"manager to add it if it must be backdated."
-                    )
-                elif late and is_manager and not manager_override:
-                    st.error("Check the confirmation box above to save a late submission.")
-                else:
-                    db.add_bill(
-                        employee_name=employee_name,
-                        description=description.strip(),
-                        date_submitted=date_submitted.isoformat(),
-                        period=period.strip(),
-                        bill_amount=bill_amount,
-                        reimbursed_amount=reimbursed_amount,
-                        clearing_date=clearing_date.isoformat() if clearing_date else None,
-                        screenshot_path=None,
-                        approved_pdf_path=None,
-                        remarks=remarks.strip(),
-                        billing_month=billing_month_value.isoformat(),
-                    )
-                    new_id = db.get_all_bills()[-1]["id"]
-                    shot_path = save_uploaded_file(screenshot, new_id, "shot") if screenshot else None
-                    pdf_path = save_uploaded_file(approved_pdf, new_id, "pdf") if approved_pdf else None
-                    if shot_path or pdf_path:
-                        bill = db.get_bill(new_id)
-                        db.update_bill(new_id, bill["employee_name"], bill["description"], bill["date_submitted"],
-                                        bill["period"], bill["bill_amount"], bill["reimbursed_amount"],
-                                        bill["clearing_date"], shot_path or bill["screenshot_path"],
-                                        pdf_path or bill["approved_pdf_path"], bill["remarks"])
-
-                    st.session_state["last_added_bill"] = new_id
-                    st.rerun()
-
-    else:
-        # --------------------------------------------------------------
-        # SkyElectric Expense Claim — multiple expense rows, auto-generated PDF
-        # --------------------------------------------------------------
-        st.caption(
-            "Fill this in the same way as the SkyElectric Expense Claim form. "
-            "Pressing Save creates the bill and generates the matching PDF automatically "
-            "— no separate printing or uploading step."
-        )
-
+    with st.form("add_bill_form", clear_on_submit=True):
         if is_manager:
-            ec_employee_name = st.selectbox("Employee", auth.all_employee_names(), key="ec_employee")
+            employee_name = st.selectbox("Employee", auth.all_employee_names())
         else:
-            ec_employee_name = current_user["display_name"]
-            st.text_input("Employee", value=ec_employee_name, disabled=True, key="ec_employee_display")
+            employee_name = current_user["display_name"]
+            st.text_input("Employee", value=employee_name, disabled=True)
 
-        hcol1, hcol2 = st.columns(2)
-        with hcol1:
-            ec_month_name = st.selectbox("Month", month_names, index=default_month_index, key="ec_month")
-            ec_year = st.number_input("Year", min_value=2020, max_value=2100, value=default_year, step=1, key="ec_year")
-            ec_expense_type = st.text_input("Expense Type", value="Operations", key="ec_type")
-            ec_reason = st.text_input("Reason", placeholder="e.g. Site visit", key="ec_reason")
-        with hcol2:
-            ec_cost_centre = st.text_input("Cost Centre", value="C&I", key="ec_cc")
-            ec_sale_order = st.text_input("Sale Order No.", placeholder="e.g. 28074", key="ec_so")
-            ec_customer = st.text_input("Customer Name", placeholder="e.g. National Foods", key="ec_cust")
-            ec_sale_type = st.text_input("Sale Type", value="C&I", key="ec_st")
+        description = st.text_input("Bill / Expense Description")
 
-        ec_billing_month_value = date(int(ec_year), month_names.index(ec_month_name) + 1, 1)
-        ec_deadline = calc.billing_deadline(ec_billing_month_value)
-        st.caption(f"Deadline to submit a {ec_month_name} {ec_year} claim: {ec_deadline.strftime('%d %b %Y')}")
+        col1, col2 = st.columns(2)
+        with col1:
+            date_submitted = st.date_input("Date of Submission", value=date.today())
+            bill_amount = st.number_input("Bill Amount", min_value=0.0, step=100.0)
+            has_clearing_date = st.checkbox("Clearing date known?")
+            clearing_date = st.date_input("Clearing Date", value=date.today()) if has_clearing_date else None
+        with col2:
+            bmcol1, bmcol2 = st.columns(2)
+            with bmcol1:
+                billing_month_name = st.selectbox(
+                    "Billing Month — which month's expenses is this for?",
+                    month_names, index=default_month_index)
+            with bmcol2:
+                billing_year = st.number_input(
+                    "Year", min_value=2020, max_value=2100, value=default_year, step=1)
+            period = st.text_input("Period (e.g. 1 Aug - 15 Aug 2026)")
+            reimbursed_amount = st.number_input("Reimbursed Amount so far", min_value=0.0, step=100.0)
+            screenshot = st.file_uploader("Screenshot (optional)", type=["png", "jpg", "jpeg"])
+            approved_pdf = st.file_uploader("Original approved bill PDF (optional)", type=["pdf"])
+        remarks = st.text_area("Remarks")
 
-        if "expense_rows_df" not in st.session_state:
-            st.session_state["expense_rows_df"] = pd.DataFrame(
-                [{"date": date.today().isoformat(), "detail": "", "amount": 0.0}])
+        billing_month_value = date(int(billing_year), month_names.index(billing_month_name) + 1, 1)
+        deadline = calc.billing_deadline(billing_month_value)
+        st.caption(f"Deadline to submit a {billing_month_name} {billing_year} bill: {deadline.strftime('%d %b %Y')}")
 
-        with st.expander("Auto-Calculate — Food (DA) and Fuel", expanded=False):
-            st.caption("Same rates as the travel request form. Fill these in, then use the buttons to add rows to the expense table below.")
-
-            st.markdown("*Food / Daily Allowance*")
-            acol1, acol2, acol3 = st.columns(3)
-            with acol1:
-                ac_dep = st.date_input("Departure Date", value=date.today(), key="ac_dep")
-            with acol2:
-                ac_ret = st.date_input("Return Date", value=date.today(), key="ac_ret")
-            with acol3:
-                ac_level = st.selectbox(
-                    "Management Level", ["upper", "middle", "junior"],
-                    format_func=lambda x: {"upper": "Upper", "middle": "Middle", "junior": "Junior"}[x],
-                    key="ac_level")
-
-            ac_days = calc.trip_days(ac_dep, ac_ret)
-            ac_same_day = (ac_days == 1)
-            ac_rate, ac_label = calc.food_da_rate(ac_level, ac_same_day)
-
-            if ac_days == 0:
-                st.caption("Set a valid Departure/Return date range to calculate.")
-            else:
-                if ac_rate is None:
-                    ac_manual_rate = st.number_input(
-                        "Amount/day (Upper level is as-per-actual — enter the rate)",
-                        min_value=0.0, step=100.0, key="ac_manual_rate")
-                    ac_food_total = ac_manual_rate * ac_days
-                else:
-                    ac_manual_rate = ac_rate
-                    ac_food_total = ac_rate * ac_days
-                st.caption(f"{ac_days} day(s) — {ac_label} — Total: PKR {ac_food_total:,.2f}")
-
-                if st.button("Add Food Allowance rows (one per day)", key="ac_add_food"):
-                    new_rows = [
-                        {"date": d, "detail": f"Food / Daily Allowance ({ac_label})", "amount": ac_manual_rate}
-                        for d in calc.trip_day_range(ac_dep, ac_ret)
-                    ]
-                    current = st.session_state["expense_rows_df"]
-                    current = current[current["detail"].fillna("").str.strip() != ""]
-                    st.session_state["expense_rows_df"] = pd.concat(
-                        [current, pd.DataFrame(new_rows)], ignore_index=True)
-                    st.session_state.pop("expense_rows_editor", None)
-                    st.rerun()
-
-            st.divider()
-            st.markdown("*Fuel — Own Vehicle (Rs. 15/km)*")
-            fcol1, fcol2 = st.columns(2)
-            with fcol1:
-                ac_km = st.number_input("Distance (km)", min_value=0.0, step=10.0, key="ac_km")
-            with fcol2:
-                ac_fuel_date = st.date_input("Date", value=date.today(), key="ac_fuel_date")
-            ac_fuel_amount = calc.fuel_amount(ac_km)
-            st.caption(f"{ac_km:.0f} km × Rs. 15 = PKR {ac_fuel_amount:,.2f}")
-            if st.button("Add Fuel row", key="ac_add_fuel"):
-                new_row = {"date": ac_fuel_date.isoformat(), "detail": "Own Vehicle Fuel (Rs. 15/km)", "amount": ac_fuel_amount}
-                current = st.session_state["expense_rows_df"]
-                current = current[current["detail"].fillna("").str.strip() != ""]
-                st.session_state["expense_rows_df"] = pd.concat(
-                    [current, pd.DataFrame([new_row])], ignore_index=True)
-                st.session_state.pop("expense_rows_editor", None)
-                st.rerun()
-
-        st.markdown("**Expense Rows**")
-        edited_rows = st.data_editor(
-            st.session_state["expense_rows_df"],
-            num_rows="dynamic",
-            column_config={
-                "date": st.column_config.TextColumn("Date (YYYY-MM-DD)"),
-                "detail": st.column_config.TextColumn("Expense Details"),
-                "amount": st.column_config.NumberColumn("Amount (PKR)", min_value=0.0, step=100.0),
-            },
-            hide_index=True, use_container_width=True, key="expense_rows_editor",
-        )
-        st.session_state["expense_rows_df"] = edited_rows
-
-        ec_total = float(edited_rows["amount"].fillna(0).sum()) if not edited_rows.empty else 0.0
-        st.metric("Total", f"PKR {ec_total:,.2f}")
-
-        st.markdown("**Receipts**")
-        ec_receipts = st.file_uploader(
-            "Add receipt images (optional — appear on a Receipts page in the PDF)",
-            type=["png", "jpg", "jpeg"], accept_multiple_files=True, key="ec_receipts")
-
-        st.markdown("**Signatories**")
-        scol1, scol2, scol3 = st.columns(3)
-        with scol1:
-            ec_sig_employee = st.text_input("Employee Name", value=ec_employee_name, key="ec_sig_emp")
-        with scol2:
-            ec_sig_ops = st.text_input("Operations Lead", value="Mr. Ghazanfar Ali", key="ec_sig_ops")
-        with scol3:
-            ec_sig_vp = st.text_input("Director Operations", value="Mr. Umair Shakeel", key="ec_sig_vp")
-
-        ec_date_submitted = st.date_input("Date of Submission", value=date.today(), key="ec_date_submitted")
-
-        ec_manager_override = False
+        manager_override = False
         if is_manager:
-            ec_manager_override = st.checkbox(
-                "Confirm late submission (only needed if past the deadline shown above)", key="ec_override")
+            manager_override = st.checkbox(
+                "Confirm late submission (only needed if past the deadline shown above)")
 
-        if st.button("Save Expense Claim", type="primary"):
-            ec_late = calc.is_late_submission(ec_date_submitted, ec_billing_month_value)
-            valid_rows = edited_rows[edited_rows["detail"].fillna("").str.strip() != ""] if not edited_rows.empty else edited_rows
-            if not ec_reason.strip():
-                st.error("Reason is required.")
-            elif valid_rows.empty:
-                st.error("Add at least one expense row with a description.")
-            elif ec_late and not is_manager:
+        submitted = st.form_submit_button("Save bill", type="primary")
+        if submitted:
+            late = calc.is_late_submission(date_submitted, billing_month_value)
+            if not description.strip():
+                st.error("Bill description is required.")
+            elif late and not is_manager:
                 st.error(
-                    f"A {ec_month_name} {ec_year} claim must be submitted by "
-                    f"{ec_deadline.strftime('%d %b %Y')}. This is late — please ask your "
+                    f"A {billing_month_name} {billing_year} bill must be submitted by "
+                    f"{deadline.strftime('%d %b %Y')}. This is late — please ask your "
                     f"manager to add it if it must be backdated."
                 )
-            elif ec_late and is_manager and not ec_manager_override:
+            elif late and is_manager and not manager_override:
                 st.error("Check the confirmation box above to save a late submission.")
             else:
-                description = f"{ec_expense_type} — {ec_reason.strip()}"
                 db.add_bill(
-                    employee_name=ec_employee_name,
-                    description=description,
-                    date_submitted=ec_date_submitted.isoformat(),
-                    period=f"{ec_month_name} {ec_year}",
-                    bill_amount=ec_total,
-                    reimbursed_amount=0,
-                    clearing_date=None,
+                    employee_name=employee_name,
+                    description=description.strip(),
+                    date_submitted=date_submitted.isoformat(),
+                    period=period.strip(),
+                    bill_amount=bill_amount,
+                    reimbursed_amount=reimbursed_amount,
+                    clearing_date=clearing_date.isoformat() if clearing_date else None,
                     screenshot_path=None,
                     approved_pdf_path=None,
-                    remarks="",
-                    billing_month=ec_billing_month_value.isoformat(),
+                    remarks=remarks.strip(),
+                    billing_month=billing_month_value.isoformat(),
                 )
                 new_id = db.get_all_bills()[-1]["id"]
+                shot_path = save_uploaded_file(screenshot, new_id, "shot") if screenshot else None
+                pdf_path = save_uploaded_file(approved_pdf, new_id, "pdf") if approved_pdf else None
+                if shot_path or pdf_path:
+                    bill = db.get_bill(new_id)
+                    db.update_bill(new_id, bill["employee_name"], bill["description"], bill["date_submitted"],
+                                    bill["period"], bill["bill_amount"], bill["reimbursed_amount"],
+                                    bill["clearing_date"], shot_path or bill["screenshot_path"],
+                                    pdf_path or bill["approved_pdf_path"], bill["remarks"])
 
-                receipt_paths = []
-                for i, rfile in enumerate(ec_receipts or []):
-                    ext = os.path.splitext(rfile.name)[1] or ".jpg"
-                    rpath = os.path.join(db.SCREENSHOT_DIR, f"bill_{new_id}_receipt{i+1}{ext}")
-                    with open(rpath, "wb") as f:
-                        f.write(rfile.getbuffer())
-                    receipt_paths.append(rpath)
-
-                pdf_path = os.path.join(db.SCREENSHOT_DIR, f"bill_{new_id}_pdf.pdf")
-                header = {
-                    "company": "SkyElectric", "department": "C&I Operations",
-                    "month_label": f"{ec_month_name} {ec_year}", "expense_type": ec_expense_type,
-                    "reason": ec_reason.strip(), "cost_centre": ec_cost_centre,
-                    "sale_order": ec_sale_order, "customer": ec_customer,
-                    "sale_type": ec_sale_type, "employee": ec_employee_name,
-                }
-                pdf_rows = [
-                    {"date": r["date"], "detail": r["detail"], "amount": r["amount"]}
-                    for _, r in valid_rows.iterrows()
-                ]
-                signatories = {"employee": ec_sig_employee, "ops_lead": ec_sig_ops, "vp": ec_sig_vp}
-                expense_pdf.build_expense_pdf(pdf_path, header, pdf_rows, signatories, receipts=receipt_paths)
-
-                bill = db.get_bill(new_id)
-                db.update_bill(new_id, bill["employee_name"], bill["description"], bill["date_submitted"],
-                                bill["period"], bill["bill_amount"], bill["reimbursed_amount"],
-                                bill["clearing_date"], bill["screenshot_path"], pdf_path, bill["remarks"])
-
-                del st.session_state["expense_rows_df"]
-                st.session_state.pop("expense_rows_editor", None)
                 st.session_state["last_added_bill"] = new_id
                 st.rerun()
 
@@ -830,6 +622,18 @@ with tabs[2]:
         st.caption("To email a notification about it, go to 'View or attach files for a bill', "
                     "select this bill, and use the Send notification email button there.")
         del st.session_state["last_added_bill"]
+
+    st.divider()
+    st.subheader("SkyElectric Expense Claim Form")
+    st.caption(
+        "This is your original form, running exactly as-is inside the app — same tabs, "
+        "same Smart Wizard, same PDF export. Fill it out and tap 'Download PDF' at the "
+        "bottom as usual, then come back up to the form above and attach that PDF under "
+        "'Original approved bill PDF' when you save the bill."
+    )
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "expense_claim_form.html")) as f:
+        expense_form_html = f.read()
+    st.components.v1.html(expense_form_html, height=1400, scrolling=True)
 
 # ---------------------------------------------------------------
 # ARCHIVE — fully paid bills removed from the active ledger at month close

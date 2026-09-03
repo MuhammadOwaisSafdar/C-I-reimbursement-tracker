@@ -70,30 +70,21 @@ small note explains that email isn't configured instead of failing.
   (blocked after the 3rd of the month — see below), and can view their own approval
   status, but cannot approve bills or see anyone else's data.
 
-## SkyElectric Expense Claim (auto-generated PDF)
+## SkyElectric Expense Claim Form (your original tool, embedded)
 
-On the Add New Bill tab, choose "SkyElectric Expense Claim" instead of "Simple
-bill" to fill out the same fields as the standalone expense claim form — Month,
-Expense Type, Reason, Cost Centre, Sale Order No., Customer, Sale Type, a table
-of expense rows (add/remove rows freely), and signatories. Pressing "Save Expense
-Claim" does everything in one step: creates the bill (amount set to the sum of
-the rows) and generates a matching PDF automatically, attached as the approved
-bill PDF — no separate step of filling the old HTML form, printing to PDF, and
-uploading it here. This uses `reportlab` to build the PDF, so it doesn't
-pixel-match the original branded form, but it contains the same information in a
-clean, professional layout. The PDF also carries your actual SkyElectric logo and
-brand colors, and a second Receipts page (2-column photo grid, paginated) when
-you upload receipt images.
+At the bottom of the Add New Bill tab, your actual expense claim form — the same
+HTML file, with all its tabs (Travel Request, Expense Claim, Send & Export), the
+Smart Wizard, the receipts, the real jsPDF-generated PDF — runs directly inside
+the app, unchanged. Fill it out and use its own "Download PDF" button exactly as
+before. Then scroll up to the Add New Bill form above and attach that downloaded
+PDF under "Original approved bill PDF" when you save the bill — that's the one
+extra step that connects the form's output to the ledger.
 
-Within that mode, an **"Auto-Calculate — Food (DA) and Fuel"** expander replicates
-the original form's Smart Wizard rates: pick Departure/Return dates and a
-Management Level (Upper/Middle/Junior) and it works out the daily food allowance
-exactly like the HTML tool did — Rs. 1,000/day fixed for Junior, Rs. 3,000/day
-overnight or Rs. 2,000/day same-day for Middle, and an editable as-per-actual rate
-for Upper — then adds one row per day to the expense table with one click. Same
-for fuel: enter kilometers and it calculates Rs. 15/km and adds that as a row too.
-Both just populate the same editable Expense Rows table above, so anything added
-this way can still be edited or removed by hand afterward.
+This intentionally does not try to recreate the form in Python — that produced a
+lower-quality result. Running your real file is the only way to get an exact
+match, since its PDF generation is JavaScript that only your browser can execute;
+this app can host and display that file, but can't reach into what it produces to
+save it automatically.
 
 ## Submission deadline rule
 
@@ -131,7 +122,7 @@ Opens at `http://localhost:8501`.
 - `calc.py` — balance / status / late-submission calculations
 - `auth.py` — user accounts (stored in `users.json`, created on first run)
 - `notify.py` — sends the manager email when a new bill is submitted
-- `expense_pdf.py` — builds the SkyElectric Expense Claim PDF automatically
+- `assets/expense_claim_form.html` — your original expense claim form, embedded as-is
 - `.streamlit/secrets.toml.example` — template for email settings (copy and fill in)
 - `reimbursements.db` — created automatically on first run
 - `screenshots/` — uploaded screenshots and approved-bill PDFs are saved here
