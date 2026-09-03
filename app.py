@@ -133,6 +133,16 @@ def save_uploaded_file(uploaded_file, bill_id, kind):
     return dest_path
 
 
+def file_exists(p):
+    """Safely check a stored path — handles None, NaN, and pandas NA without crashing."""
+    if p is None or not isinstance(p, str) or not p:
+        return False
+    try:
+        return os.path.exists(p)
+    except (TypeError, ValueError):
+        return False
+
+
 # ---------------------------------------------------------------
 # HEADER / SIDEBAR
 # ---------------------------------------------------------------
@@ -225,9 +235,9 @@ with tabs[1]:
 
         display_df = df.copy()
         display_df["Screenshot"] = display_df["screenshot_path"].apply(
-            lambda p: "Attached" if p and os.path.exists(p) else "None")
+            lambda p: "Attached" if file_exists(p) else "None")
         display_df["Approved PDF"] = display_df["approved_pdf_path"].apply(
-            lambda p: "Attached" if p and os.path.exists(p) else "None")
+            lambda p: "Attached" if file_exists(p) else "None")
 
         show_cols = ["id", "employee_name", "description", "date_submitted", "period", "month",
                      "bill_amount", "reimbursed_amount", "balance_due", "status",
@@ -306,9 +316,9 @@ with tabs[1]:
 
         current = db.get_bill(int(bill_choice))
         if current:
-            if current.get("screenshot_path") and os.path.exists(current["screenshot_path"]):
+            if file_exists(current.get("screenshot_path")):
                 st.image(current["screenshot_path"], caption="Screenshot", width=300)
-            if current.get("approved_pdf_path") and os.path.exists(current["approved_pdf_path"]):
+            if file_exists(current.get("approved_pdf_path")):
                 with open(current["approved_pdf_path"], "rb") as f:
                     st.download_button("Download approved bill PDF", f, file_name=os.path.basename(current["approved_pdf_path"]))
 
