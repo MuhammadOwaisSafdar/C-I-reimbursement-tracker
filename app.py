@@ -614,13 +614,14 @@ with tabs[2]:
             screenshot = st.file_uploader(
                 "Screenshot — required once Reimbursed Amount is entered (proof of clearance)",
                 type=["png", "jpg", "jpeg"])
-            approved_pdf = st.file_uploader("Original approved bill PDF (optional)", type=["pdf"])
+            approved_pdf = st.file_uploader("Original approved bill PDF *", type=["pdf"])
         remarks = st.text_area("Remarks")
 
         billing_month_value = date(int(billing_year), month_names.index(billing_month_name) + 1, 1)
         deadline = calc.billing_deadline(billing_month_value)
         st.caption(f"Deadline to submit a {billing_month_name} {billing_year} bill: {deadline.strftime('%d %b %Y')}")
-        st.caption("* Required fields.")
+        st.caption("* Required fields. The approved bill PDF is also required. A screenshot "
+                    "is required only once a Reimbursed Amount is entered.")
 
         manager_override = False
         if is_manager:
@@ -636,6 +637,8 @@ with tabs[2]:
                 st.error("Bill Amount is required and must be greater than 0.")
             elif not period.strip():
                 st.error("Period is required.")
+            elif approved_pdf is None:
+                st.error("The original approved bill PDF is required.")
             elif reimbursed_amount > 0 and screenshot is None:
                 st.error(
                     "A screenshot is required as proof of clearance once you enter a "
