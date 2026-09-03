@@ -164,6 +164,25 @@ def render_pdf_viewer(pdf_path, label="View PDF"):
         )
 
 
+@st.cache_resource
+def expense_form_data_url():
+    """Builds a fully self-contained data: URL for the expense claim form — the HTML
+    with jsPDF inlined directly into it — so opening it makes zero server requests
+    (sidesteps Streamlit's static-file serving, which forces .html/.js to text/plain
+    and can hang/break depending on the deployment)."""
+    static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+    with open(os.path.join(static_dir, "expense_claim_form.html"), encoding="utf-8") as f:
+        html = f.read()
+    with open(os.path.join(static_dir, "jspdf.umd.min.js"), encoding="utf-8") as f:
+        js = f.read()
+    html = html.replace(
+        '<script src="jspdf.umd.min.js"></script>',
+        f"<script>{js}</script>",
+    )
+    encoded = base64.b64encode(html.encode("utf-8")).decode("ascii")
+    return f"data:text/html;base64,{encoded}"
+
+
 # ---------------------------------------------------------------
 # HEADER / SIDEBAR
 # ---------------------------------------------------------------
@@ -631,7 +650,13 @@ with tabs[2]:
         "'Download PDF' button as usual, then come back to the form above and attach "
         "that PDF under 'Original approved bill PDF' when you save the bill."
     )
-    st.link_button("Open SkyElectric Expense Claim Form", url="/app/static/expense_claim_form.html")
+    st.markdown(
+        f'<a href="{expense_form_data_url()}" target="_blank" rel="noopener" '
+        f'style="display:inline-block;background:#1F4E78;color:white;padding:10px 18px;'
+        f'border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">'
+        f'Open SkyElectric Expense Claim Form</a>',
+        unsafe_allow_html=True,
+    )
 
 # ---------------------------------------------------------------
 # ARCHIVE — fully paid bills removed from the active ledger at month close

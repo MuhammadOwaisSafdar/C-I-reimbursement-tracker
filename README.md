@@ -70,17 +70,28 @@ small note explains that email isn't configured instead of failing.
   (blocked after the 3rd of the month — see below), and can view their own approval
   status, but cannot approve bills or see anyone else's data.
 
-## SkyElectric Expense Claim Form (your original tool, hosted by the app)
+## SkyElectric Expense Claim Form (your original tool, opened directly)
 
 At the bottom of the Add New Bill tab, an "Open SkyElectric Expense Claim Form"
-button opens your actual file — same HTML, same tabs (Travel Request, Expense
+link opens your actual file — same HTML, same tabs (Travel Request, Expense
 Claim, Send & Export), same Smart Wizard, same real jsPDF-generated PDF — full
-screen in a new tab, exactly as it's always worked. It's served directly by this
-app (from the `static/` folder) rather than embedded in a cramped scrolling box.
-Fill it out, use its own "Download PDF" button as before, then come back to the
-Add New Bill form above and attach that downloaded PDF under "Original approved
-bill PDF" when you save the bill — that's the one extra step that connects the
-form's output to the ledger.
+screen in a new tab, exactly as it's always worked.
+
+Technical note, in case this ever needs troubleshooting: this does NOT use
+Streamlit's built-in static file server. Streamlit deliberately serves `.html`
+and `.js` files as plain text rather than rendering them (a security default),
+which is why an earlier version of this feature just showed an endless spinner.
+Instead, the app reads `static/expense_claim_form.html` and `static/jspdf.umd.min.js`,
+inlines the jsPDF library directly into the HTML so there's no separate file
+request at all, and opens the whole thing as a `data:` URL — the browser renders
+it with zero server round-trips once the link is clicked. The two source files in
+`static/` are still needed (the app reads them at startup) — just don't expect
+them to be reachable at a URL directly.
+
+Fill the form out, use its own "Download PDF" button as before, then come back to
+the Add New Bill form above and attach that downloaded PDF under "Original
+approved bill PDF" when you save the bill — that's the one extra step that
+connects the form's output to the ledger.
 
 This intentionally does not try to recreate the form in Python — that produced a
 lower-quality result. Running your real file is the only way to get an exact
@@ -124,7 +135,8 @@ Opens at `http://localhost:8501`.
 - `calc.py` — balance / status / late-submission calculations
 - `auth.py` — user accounts (stored in `users.json`, created on first run)
 - `notify.py` — sends the manager email when a new bill is submitted
-- `static/expense_claim_form.html` — your original expense claim form, served as-is
+- `static/expense_claim_form.html` — your original expense claim form (read at startup, not served by URL)
+- `static/jspdf.umd.min.js` — the PDF library your form uses, hosted locally instead of via CDN
 - `.streamlit/config.toml` — enables Streamlit's static file serving so the form above is reachable by URL
 - `.streamlit/secrets.toml.example` — template for email settings (copy and fill in)
 - `reimbursements.db` — created automatically on first run
