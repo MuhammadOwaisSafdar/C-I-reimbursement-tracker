@@ -368,8 +368,22 @@ with tabs[1]:
     else:
         df = load_dataframe(scope_employee)
 
+    no_bills_at_all = df.empty
+
+    status_filt = st.radio(
+        "Show", ["Unpaid & Partial", "All", "Fully Cleared"], horizontal=True, key="bills_status_filter")
+    if not df.empty and status_filt == "Unpaid & Partial":
+        df = df[df["status"] != "Cleared"]
+    elif not df.empty and status_filt == "Fully Cleared":
+        df = df[df["status"] == "Cleared"]
+
     if df.empty:
-        st.info("No bills yet.")
+        if no_bills_at_all:
+            st.info("No bills yet.")
+        elif status_filt == "Unpaid & Partial":
+            st.success("Nothing unpaid or partial right now — everything here is fully cleared.")
+        else:
+            st.info("No fully cleared bills in this view yet.")
     else:
         st.caption("Edit Reimbursed Amount, dates, or Remarks directly below, then press Save changes. "
                     "Balance Due and Status update on their own.")
@@ -442,24 +456,39 @@ with tabs[1]:
         )
 
         if st.button("Save changes", type="primary"):
+            missing_screenshot = []
             for _, row in edited.iterrows():
                 original = df.loc[df["id"] == row["id"]].iloc[0]
-                db.update_bill(
-                    bill_id=int(row["id"]),
-                    employee_name=row["employee_name"] if is_manager else original["employee_name"],
-                    description=row["description"],
-                    date_submitted=row["date_submitted"],
-                    period=row["period"],
-                    bill_amount=float(row["bill_amount"] or 0),
-                    reimbursed_amount=float(row["reimbursed_amount"] or 0),
-                    clearing_date=row["clearing_date"] or None,
-                    screenshot_path=original["screenshot_path"],
-                    approved_pdf_path=original["approved_pdf_path"],
-                    remarks=row["remarks"],
-                    approval_status=row["approval_status"] if is_manager else original["approval_status"],
+                new_reimbursed = float(row["reimbursed_amount"] or 0)
+                if new_reimbursed > 0 and not file_exists(original["screenshot_path"]):
+                    missing_screenshot.append(int(row["id"]))
+
+            if missing_screenshot:
+                ids_str = ", ".join(f"#{i}" for i in missing_screenshot)
+                st.error(
+                    f"A screenshot is required as proof of clearance for bill(s) {ids_str} "
+                    f"since a Reimbursed Amount is set. Attach one below under 'View or attach "
+                    f"files for a bill' first, then save changes again."
                 )
-            st.success("Changes saved.")
-            st.rerun()
+            else:
+                for _, row in edited.iterrows():
+                    original = df.loc[df["id"] == row["id"]].iloc[0]
+                    db.update_bill(
+                        bill_id=int(row["id"]),
+                        employee_name=row["employee_name"] if is_manager else original["employee_name"],
+                        description=row["description"],
+                        date_submitted=row["date_submitted"],
+                        period=row["period"],
+                        bill_amount=float(row["bill_amount"] or 0),
+                        reimbursed_amount=float(row["reimbursed_amount"] or 0),
+                        clearing_date=row["clearing_date"] or None,
+                        screenshot_path=original["screenshot_path"],
+                        approved_pdf_path=original["approved_pdf_path"],
+                        remarks=row["remarks"],
+                        approval_status=row["approval_status"] if is_manager else original["approval_status"],
+                    )
+                st.success("Changes saved.")
+                st.rerun()
 
         st.divider()
         st.subheader("View or attach files for a bill")
@@ -568,7 +597,7 @@ with tabs[2]:
         col1, col2 = st.columns(2)
         with col1:
             date_submitted = st.date_input("Date of Submission", value=date.today())
-            bill_amount = st.number_input("Bill Amount", min_value=0.0, step=100.0)
+            bill_amount = st.number_input("Bill Amount *", min_value=0.0, step=100.0)
             has_clearing_date = st.checkbox("Clearing date known?")
             clearing_date = st.date_input("Clearing Date", value=date.today()) if has_clearing_date else None
         with col2:
@@ -580,15 +609,18 @@ with tabs[2]:
             with bmcol2:
                 billing_year = st.number_input(
                     "Year", min_value=2020, max_value=2100, value=default_year, step=1)
-            period = st.text_input("Period (e.g. 1 Aug - 15 Aug 2026)")
+            period = st.text_input("Period * (e.g. 1 Aug - 15 Aug 2026)")
             reimbursed_amount = st.number_input("Reimbursed Amount so far", min_value=0.0, step=100.0)
-            screenshot = st.file_uploader("Screenshot (optional)", type=["png", "jpg", "jpeg"])
+            screenshot = st.file_uploader(
+                "Screenshot — required once Reimbursed Amount is entered (proof of clearance)",
+                type=["png", "jpg", "jpeg"])
             approved_pdf = st.file_uploader("Original approved bill PDF (optional)", type=["pdf"])
         remarks = st.text_area("Remarks")
 
         billing_month_value = date(int(billing_year), month_names.index(billing_month_name) + 1, 1)
         deadline = calc.billing_deadline(billing_month_value)
         st.caption(f"Deadline to submit a {billing_month_name} {billing_year} bill: {deadline.strftime('%d %b %Y')}")
+        st.caption("* Required fields.")
 
         manager_override = False
         if is_manager:
@@ -600,6 +632,15 @@ with tabs[2]:
             late = calc.is_late_submission(date_submitted, billing_month_value)
             if not description.strip():
                 st.error("Bill description is required.")
+            elif bill_amount <= 0:
+                st.error("Bill Amount is required and must be greater than 0.")
+            elif not period.strip():
+                st.error("Period is required.")
+            elif reimbursed_amount > 0 and screenshot is None:
+                st.error(
+                    "A screenshot is required as proof of clearance once you enter a "
+                    "Reimbursed Amount — attach one, or set Reimbursed Amount back to 0."
+                )
             elif late and not is_manager:
                 st.error(
                     f"A {billing_month_name} {billing_year} bill must be submitted by "
