@@ -1,5 +1,6 @@
 """
-Sends an email to the manager whenever a new bill is submitted.
+Sends an email to the manager (CC: every handler/draftsman with an email on
+file) whenever a new bill is submitted.
 
 Reads SMTP settings from Streamlit secrets (st.secrets["email"]), so no
 credentials are hardcoded or committed to GitHub. See README for setup.
@@ -22,6 +23,8 @@ from email.mime.text import MIMEText
 
 import streamlit as st
 
+import auth
+
 
 def _get_email_config():
     try:
@@ -35,10 +38,12 @@ def _get_email_config():
 
 
 def send_bill_notification(employee_name, description, bill_amount, date_submitted, bill_id):
-    """Best-effort email to the manager. Returns (sent: bool, message: str). No links included."""
+    """Best-effort email to the manager, CC'd to handlers. Returns (sent: bool, message: str)."""
     cfg = _get_email_config()
     if cfg is None:
         return False, "Email isn't configured yet — ask your admin to add SMTP details in Streamlit secrets."
+
+    cc_list = auth.handler_emails()
 
     subject = f"New bill submitted — {employee_name} — {bill_amount:,.0f}"
     body = (
@@ -54,12 +59,18 @@ def send_bill_notification(employee_name, description, bill_amount, date_submitt
     msg["Subject"] = subject
     msg["From"] = cfg["sender_email"]
     msg["To"] = cfg["manager_email"]
+    if cc_list:
+        msg["Cc"] = ", ".join(cc_list)
+
+    all_recipients = [cfg["manager_email"]] + cc_list
 
     try:
         with smtplib.SMTP(cfg["smtp_server"], int(cfg["smtp_port"]), timeout=10) as server:
             server.starttls()
             server.login(cfg["sender_email"], cfg["sender_password"])
-            server.sendmail(cfg["sender_email"], [cfg["manager_email"]], msg.as_string())
+            server.sendmail(cfg["sender_email"], all_recipients, msg.as_string())
+        if cc_list:
+            return True, f"Email sent to manager, CC: {', '.join(cc_list)}."
         return True, "Email sent to manager."
     except Exception as e:
         return False, f"Email could not be sent ({e}). The bill was still saved."

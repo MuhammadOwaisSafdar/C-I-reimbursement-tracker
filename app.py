@@ -5,6 +5,7 @@ Run with:  streamlit run app.py
 
 import os
 import io
+import json
 import zipfile
 import base64
 from datetime import date
@@ -173,11 +174,11 @@ if st.sidebar.button("Sign out"):
 st.title("Reimbursement Tracker")
 
 if is_manager:
-    tab_names = ["Dashboard", "All Bills", "Add New Bill", "Manage Team"]
+    tab_names = ["Dashboard", "All Bills", "Add New Bill", "Archive", "Manage Team"]
 elif is_handler:
     tab_names = ["Dashboard", "Bills to Upload"]
 else:
-    tab_names = ["My Dashboard", "My Bills", "Add New Bill"]
+    tab_names = ["My Dashboard", "My Bills", "Add New Bill", "Archive"]
 
 tabs = st.tabs(tab_names)
 
@@ -200,12 +201,14 @@ if is_handler:
             if not approved_df.empty else 0
         pending_upload_amount = approved_amount - uploaded_amount
 
-        c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric("Approved Bills", total_approved)
-        c2.metric("Uploaded to NetSuite", int(uploaded_count))
-        c3.metric("Not Yet Uploaded", int(not_uploaded_count))
-        c4.metric("Approved Amount", f"{approved_amount:,.0f}")
-        c5.metric("Amount Pending Upload", f"{pending_upload_amount:,.0f}")
+        row1 = st.columns(3)
+        row1[0].metric("Approved Bills", total_approved)
+        row1[1].metric("Uploaded to NetSuite", int(uploaded_count))
+        row1[2].metric("Not Yet Uploaded", int(not_uploaded_count))
+
+        row2 = st.columns(2)
+        row2[0].metric("Approved Amount", f"{approved_amount:,.0f}")
+        row2[1].metric("Amount Pending Upload", f"{pending_upload_amount:,.0f}")
 
         st.divider()
         st.subheader("Not Yet Uploaded, by Employee")
@@ -294,15 +297,17 @@ with tabs[0]:
     late_count = df["date_submitted"].apply(calc.is_late_submission).sum() if not df.empty else 0
     pending_approval = (df["approval_status"] == "Pending Approval").sum() if not df.empty else 0
 
-    c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8)
-    c1.metric("Total Bills", total_bills)
-    c2.metric("Total Billed", f"{total_billed:,.0f}")
-    c3.metric("Total Reimbursed", f"{total_reimbursed:,.0f}")
-    c4.metric("Balance Outstanding", f"{balance_outstanding:,.0f}")
-    c5.metric("Fully Cleared", fully_cleared)
-    c6.metric("Partial / Pending", still_open)
-    c7.metric("Late Submissions", int(late_count))
-    c8.metric("Pending Approval", int(pending_approval))
+    row1 = st.columns(4)
+    row1[0].metric("Total Bills", total_bills)
+    row1[1].metric("Total Billed", f"{total_billed:,.0f}")
+    row1[2].metric("Total Reimbursed", f"{total_reimbursed:,.0f}")
+    row1[3].metric("Balance Outstanding", f"{balance_outstanding:,.0f}")
+
+    row2 = st.columns(4)
+    row2[0].metric("Fully Cleared", fully_cleared)
+    row2[1].metric("Partial / Pending", still_open)
+    row2[2].metric("Late Submissions", int(late_count))
+    row2[3].metric("Pending Approval", int(pending_approval))
 
     st.divider()
     left, right = st.columns(2)
@@ -486,6 +491,19 @@ with tabs[1]:
                         st.warning("Bill disapproved.")
                         st.rerun()
 
+            st.divider()
+            st.caption("Notify the manager (CC: handlers) about this specific bill, whenever you want — nothing sends automatically.")
+            if st.button("Send notification email for this bill", key=f"notify_{current['id']}"):
+                sent, msg = notify.send_bill_notification(
+                    employee_name=current["employee_name"], description=current["description"],
+                    bill_amount=current["bill_amount"], date_submitted=current["date_submitted"],
+                    bill_id=current["id"],
+                )
+                if sent:
+                    st.success(msg)
+                else:
+                    st.warning(msg)
+
         if is_manager:
             st.divider()
             st.subheader("Delete a bill")
@@ -564,26 +582,89 @@ with tabs[2]:
                                     bill["period"], bill["bill_amount"], bill["reimbursed_amount"],
                                     bill["clearing_date"], shot_path or bill["screenshot_path"],
                                     pdf_path or bill["approved_pdf_path"], bill["remarks"])
-                st.success("Bill saved.")
 
-                sent, msg = notify.send_bill_notification(
-                    employee_name=employee_name, description=description.strip(),
-                    bill_amount=bill_amount, date_submitted=date_submitted.isoformat(), bill_id=new_id,
-                )
-                if sent:
-                    st.caption("Manager notified by email.")
-                else:
-                    st.caption(msg)
+                st.session_state["last_added_bill"] = new_id
+                st.rerun()
+
+    if st.session_state.get("last_added_bill"):
+        st.success(f"Bill saved (#{st.session_state['last_added_bill']}).")
+        st.caption("To email a notification about it, go to 'View or attach files for a bill', "
+                    "select this bill, and use the Send notification email button there.")
+        del st.session_state["last_added_bill"]
+
+# ---------------------------------------------------------------
+# ARCHIVE — fully paid bills removed from the active ledger at month close
+# ---------------------------------------------------------------
+with tabs[3]:
+    st.subheader("Archive")
+    st.caption(
+        "Fully paid bills are moved here at month close, so the active ledger only "
+        "shows what's still outstanding. Nothing here is deleted — it's kept for records."
+    )
+
+    if is_manager:
+        st.divider()
+        st.subheader("Close the month")
+        st.write(
+            "This moves every currently fully-paid bill (Balance Due = 0) across the "
+            "whole team out of the active ledger and into this Archive. Bills that are "
+            "still Pending or Partially Cleared are left untouched."
+        )
+        if st.button("Close month — archive fully paid bills", type="primary"):
+            archived_count = db.archive_cleared_bills()
+            if archived_count:
+                st.success(f"Archived {archived_count} fully paid bill(s).")
+            else:
+                st.info("Nothing to archive — no fully paid bills right now.")
+            st.rerun()
+        st.divider()
+
+    if is_manager:
+        employee_options = ["All"] + auth.all_employee_names()
+        archive_filt = st.selectbox("Filter by employee", employee_options, key="archive_filter")
+        archived_rows = db.get_archived_bills(None if archive_filt == "All" else archive_filt)
+    else:
+        archived_rows = db.get_archived_bills(current_user["display_name"])
+
+    if not archived_rows:
+        st.info("No archived bills yet.")
+    else:
+        archive_df = pd.DataFrame(archived_rows)
+        archive_df["month"] = archive_df["date_submitted"].apply(calc.month_name)
+        archive_df["Screenshot"] = archive_df["screenshot_path"].apply(
+            lambda p: "Attached" if file_exists(p) else "None")
+        archive_df["Approved PDF"] = archive_df["approved_pdf_path"].apply(
+            lambda p: "Attached" if file_exists(p) else "None")
+
+        show_cols = ["id", "employee_name", "description", "date_submitted", "month", "period",
+                     "bill_amount", "reimbursed_amount", "clearing_date", "approval_status",
+                     "netsuite_status", "archived_date", "Screenshot", "Approved PDF", "remarks"]
+        st.dataframe(archive_df[show_cols], hide_index=True, use_container_width=True)
+
+        if is_manager:
+            st.divider()
+            st.subheader("Restore a bill to the active ledger")
+            restore_choice = st.selectbox(
+                "Select an archived bill", options=archive_df["id"].tolist(),
+                format_func=lambda i: f"#{i} - {archive_df.loc[archive_df['id'] == i, 'description'].values[0]}",
+                key="restore_bill",
+            )
+            if st.button("Restore to active ledger"):
+                db.unarchive_bill(int(restore_choice))
+                st.success(f"Bill #{restore_choice} restored.")
                 st.rerun()
 
 # ---------------------------------------------------------------
 # MANAGE TEAM (manager only)
 # ---------------------------------------------------------------
 if is_manager:
-    with tabs[3]:
+    with tabs[4]:
         st.subheader("Team members")
         users = auth.load_users()
-        st.table(pd.DataFrame(users)[["display_name", "username", "role"]])
+        team_df = pd.DataFrame(users)
+        if "email" not in team_df.columns:
+            team_df["email"] = ""
+        st.table(team_df[["display_name", "username", "role", "email"]].fillna(""))
 
         st.divider()
         st.subheader("Add a team member")
@@ -592,11 +673,16 @@ if is_manager:
             new_username = st.text_input("Username (for login)")
             new_password = st.text_input("Password", type="password")
             new_role = st.selectbox("Role", ["employee", "manager", "handler"])
+            new_email = st.text_input(
+                "Email (required for Handler/Draftsman — used to CC new-bill notifications)")
             add_clicked = st.form_submit_button("Add team member", type="primary")
             if add_clicked:
                 if not (new_display and new_username and new_password):
                     st.error("Fill in all fields.")
-                elif auth.add_user(new_username.strip(), new_password, new_role, new_display.strip()):
+                elif new_role == "handler" and not new_email.strip():
+                    st.error("An email address is required for the Handler/Draftsman role.")
+                elif auth.add_user(new_username.strip(), new_password, new_role,
+                                    new_display.strip(), email=new_email.strip()):
                     st.success(f"{new_display} added.")
                     st.rerun()
                 else:
@@ -613,3 +699,39 @@ if is_manager:
                 st.rerun()
         else:
             st.caption("No other team members to remove.")
+
+        st.divider()
+        st.subheader("Backup / restore team credentials")
+        st.caption(
+            "A reboot or redeploy can reset this app's storage, which wipes team logins. "
+            "Download a backup after adding people, and keep it somewhere safe on your "
+            "computer — if that ever happens, restore from it here instead of re-adding everyone by hand."
+        )
+
+        backup_json = json.dumps(auth.load_users(), indent=2)
+        st.download_button(
+            "Download team credentials backup",
+            data=backup_json,
+            file_name="team_credentials_backup.json",
+            mime="application/json",
+        )
+
+        st.write("")
+        restore_file = st.file_uploader("Restore from a backup file", type=["json"], key="restore_users")
+        if restore_file is not None:
+            try:
+                parsed = json.loads(restore_file.getvalue().decode("utf-8"))
+            except Exception:
+                st.error("That file isn't valid JSON — is it really a backup file from this app?")
+                parsed = None
+            if parsed is not None:
+                ok, message = auth.validate_users_backup(parsed)
+                if not ok:
+                    st.error(message)
+                else:
+                    st.info(message)
+                    st.warning("This will replace every current login with what's in the backup file.")
+                    if st.button("Confirm restore", type="primary"):
+                        auth.save_users(parsed)
+                        st.success("Team credentials restored. Please sign out and back in.")
+                        st.rerun()

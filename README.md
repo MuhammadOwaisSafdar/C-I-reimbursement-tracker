@@ -43,8 +43,11 @@ purpose). This needs a one-time setup:
      Verification on that Google account, then create an "App Password" at
      myaccount.google.com/apppasswords and use that 16-character code here.
    - `manager_email` — where the notification should land.
-3. **Never commit `secrets.toml` to GitHub** — it contains a password.
-4. **On Streamlit Community Cloud**, secrets work differently: open your app, go to
+3. When adding a Handler/Draftsman in Manage Team, fill in their email address —
+   every handler with an email on file is automatically CC'd on new-bill
+   notifications, no extra setup needed.
+4. **Never commit `secrets.toml` to GitHub** — it contains a password.
+5. **On Streamlit Community Cloud**, secrets work differently: open your app, go to
    Settings > Secrets, and paste the same `[email]` block there instead of uploading
    a file. That keeps the password off GitHub entirely.
 
@@ -100,6 +103,20 @@ Opens at `http://localhost:8501`.
 - `reimbursements.db` — created automatically on first run
 - `screenshots/` — uploaded screenshots and approved-bill PDFs are saved here
 
+## Month closing / Archive
+
+Each employee's Dashboard and All Bills only ever shows bills that still have a
+balance due. Once a bill is fully paid (Balance Due = 0), it stays in the active
+ledger until the manager clicks **"Close month — archive fully paid bills"** on
+the **Archive** tab. That moves every currently fully-paid bill, across the whole
+team, out of the active ledger and into the Archive — nothing is deleted, it's
+just kept out of the day-to-day view. Bills still Pending or Partially Cleared are
+left alone regardless of when this is run.
+
+The Archive tab itself lets anyone look up their own archived bills (or, for the
+manager, everyone's, with an employee filter), and the manager can restore a bill
+back to the active ledger if it was archived by mistake.
+
 ## Data persistence — please read
 
 This still uses a local SQLite file and local folder for storage. On Streamlit
@@ -108,3 +125,11 @@ restart or redeploy — it has already reset unexpectedly once. If losing data i
 acceptable, ask about switching to Google Sheets + Drive or a small free cloud
 database (Supabase) for guaranteed persistence — that's a separate, slightly bigger
 change from everything else in this file.
+
+**Team logins specifically** — go to Manage Team > "Backup / restore team
+credentials" and click "Download team credentials backup" any time you've added
+or changed accounts. Keep that file somewhere safe on your computer. If a reboot
+or redeploy ever wipes the logins, upload that same file back in on that same
+screen and click Confirm restore — no need to re-add everyone by hand. This only
+covers logins, not the bills themselves; the bigger persistence fix above would
+cover both.

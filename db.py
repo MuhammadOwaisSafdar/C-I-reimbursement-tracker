@@ -37,7 +37,9 @@ def init_db():
             remarks TEXT,
             approval_status TEXT NOT NULL DEFAULT 'Pending Approval',
             netsuite_status TEXT NOT NULL DEFAULT 'Not Uploaded',
-            netsuite_upload_date TEXT
+            netsuite_upload_date TEXT,
+            archived INTEGER NOT NULL DEFAULT 0,
+            archived_date TEXT
         )
         """
     )
@@ -49,6 +51,10 @@ def init_db():
         conn.execute("ALTER TABLE bills ADD COLUMN netsuite_status TEXT NOT NULL DEFAULT 'Not Uploaded'")
     if "netsuite_upload_date" not in existing_cols:
         conn.execute("ALTER TABLE bills ADD COLUMN netsuite_upload_date TEXT")
+    if "archived" not in existing_cols:
+        conn.execute("ALTER TABLE bills ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
+    if "archived_date" not in existing_cols:
+        conn.execute("ALTER TABLE bills ADD COLUMN archived_date TEXT")
     conn.commit()
     conn.close()
 
@@ -118,17 +124,61 @@ def delete_bill(bill_id):
     conn.close()
 
 
-def get_all_bills(employee_name=None):
+def get_all_bills(employee_name=None, include_archived=False):
     conn = get_connection()
+    archived_clause = "" if include_archived else "AND archived = 0"
     if employee_name:
         rows = conn.execute(
-            "SELECT * FROM bills WHERE employee_name = ? ORDER BY date_submitted ASC, id ASC",
+            f"SELECT * FROM bills WHERE employee_name = ? {archived_clause} ORDER BY date_submitted ASC, id ASC",
             (employee_name,),
         ).fetchall()
     else:
-        rows = conn.execute("SELECT * FROM bills ORDER BY date_submitted ASC, id ASC").fetchall()
+        rows = conn.execute(
+            f"SELECT * FROM bills WHERE 1=1 {archived_clause} ORDER BY date_submitted ASC, id ASC"
+        ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def get_archived_bills(employee_name=None):
+    conn = get_connection()
+    if employee_name:
+        rows = conn.execute(
+            "SELECT * FROM bills WHERE employee_name = ? AND archived = 1 ORDER BY archived_date DESC, id DESC",
+            (employee_name,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM bills WHERE archived = 1 ORDER BY archived_date DESC, id DESC"
+        ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def archive_cleared_bills():
+    """Archives every currently active, fully-paid bill (bill_amount <= reimbursed_amount).
+    Returns the number of bills archived."""
+    conn = get_connection()
+    today = date.today().isoformat()
+    cursor = conn.execute(
+        """
+        UPDATE bills
+        SET archived = 1, archived_date = ?
+        WHERE archived = 0 AND bill_amount <= reimbursed_amount
+        """,
+        (today,),
+    )
+    count = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return count
+
+
+def unarchive_bill(bill_id):
+    conn = get_connection()
+    conn.execute("UPDATE bills SET archived = 0, archived_date = NULL WHERE id = ?", (bill_id,))
+    conn.commit()
+    conn.close()
 
 
 def get_bill(bill_id):
