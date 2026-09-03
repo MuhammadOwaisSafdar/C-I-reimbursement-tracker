@@ -497,27 +497,36 @@ with tabs[1]:
             options=df["id"].tolist(),
             format_func=lambda i: f"#{i} - {df.loc[df['id'] == i, 'description'].values[0]}",
         )
+        st.caption("Just choose a file below — it attaches automatically, no extra button to click.")
         colA, colB = st.columns(2)
         with colA:
-            shot_upload = st.file_uploader("Screenshot (proof of clearance)", type=["png", "jpg", "jpeg"], key="shot_up")
-            if shot_upload is not None and st.button("Attach screenshot"):
-                bill = db.get_bill(int(bill_choice))
-                path = save_uploaded_file(shot_upload, bill_choice, "shot")
-                db.update_bill(bill["id"], bill["employee_name"], bill["description"], bill["date_submitted"],
-                                bill["period"], bill["bill_amount"], bill["reimbursed_amount"],
-                                bill["clearing_date"], path, bill["approved_pdf_path"], bill["remarks"])
-                st.success("Screenshot attached.")
-                st.rerun()
+            shot_upload = st.file_uploader("Screenshot (proof of clearance)", type=["png", "jpg", "jpeg"], key=f"shot_up_{bill_choice}")
+            if shot_upload is not None:
+                sig_key = f"shot_sig_{bill_choice}"
+                signature = f"{shot_upload.name}_{shot_upload.size}"
+                if st.session_state.get(sig_key) != signature:
+                    bill = db.get_bill(int(bill_choice))
+                    path = save_uploaded_file(shot_upload, bill_choice, "shot")
+                    db.update_bill(bill["id"], bill["employee_name"], bill["description"], bill["date_submitted"],
+                                    bill["period"], bill["bill_amount"], bill["reimbursed_amount"],
+                                    bill["clearing_date"], path, bill["approved_pdf_path"], bill["remarks"])
+                    st.session_state[sig_key] = signature
+                    st.success("Screenshot attached.")
+                    st.rerun()
         with colB:
-            pdf_upload = st.file_uploader("Original approved bill (PDF)", type=["pdf"], key="pdf_up")
-            if pdf_upload is not None and st.button("Attach approved PDF"):
-                bill = db.get_bill(int(bill_choice))
-                path = save_uploaded_file(pdf_upload, bill_choice, "pdf")
-                db.update_bill(bill["id"], bill["employee_name"], bill["description"], bill["date_submitted"],
-                                bill["period"], bill["bill_amount"], bill["reimbursed_amount"],
-                                bill["clearing_date"], bill["screenshot_path"], path, bill["remarks"])
-                st.success("Approved PDF attached.")
-                st.rerun()
+            pdf_upload = st.file_uploader("Original approved bill (PDF)", type=["pdf"], key=f"pdf_up_{bill_choice}")
+            if pdf_upload is not None:
+                sig_key = f"pdf_sig_{bill_choice}"
+                signature = f"{pdf_upload.name}_{pdf_upload.size}"
+                if st.session_state.get(sig_key) != signature:
+                    bill = db.get_bill(int(bill_choice))
+                    path = save_uploaded_file(pdf_upload, bill_choice, "pdf")
+                    db.update_bill(bill["id"], bill["employee_name"], bill["description"], bill["date_submitted"],
+                                    bill["period"], bill["bill_amount"], bill["reimbursed_amount"],
+                                    bill["clearing_date"], bill["screenshot_path"], path, bill["remarks"])
+                    st.session_state[sig_key] = signature
+                    st.success("Approved PDF attached.")
+                    st.rerun()
 
         current = db.get_bill(int(bill_choice))
         if current:
