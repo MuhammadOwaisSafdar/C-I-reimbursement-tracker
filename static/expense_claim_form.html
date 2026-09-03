@@ -302,7 +302,7 @@ hr{border:none;border-top:1px solid var(--bdr);margin:14px 0}
     <div class="g2">
       <div class="fld"><label>Employee Name</label><input type="text" id="e-emp" value="Mateen Arif"></div>
       <div class="fld"><label>Operations Lead</label><input type="text" id="e-mgr" value="Mr. Ghazanfal Ali"></div>
-      <div class="fld"><label>VP</label><input type="text" id="e-rd" value="Hussain Khan"></div>
+      <div class="fld"><label>Director Operations</label><input type="text" id="e-rd" value="Mr. Umair Shakeel"></div>
     </div>
   </div>
 </div>
@@ -819,12 +819,19 @@ function collectP2(){
     reason:gv('e-reason'), cc:cc,
     emp:sv(gv('e-emp'),'Mateen Arif'),
     mgr:sv(gv('e-mgr'),'Mr. Ghazanfal Ali'),
-    rd:sv(gv('e-rd'),'Hussain Khan'),
+    rd:sv(gv('e-rd'),'Mr. Umair Shakeel'),
     rows:rows
   };
 }
 
 // ── PDF ───────────────────────────────────────────────────────────────────────
+function buildFileName(){
+  var name = sv(gv('t-name'), sv(gv('e-emp'),'Employee'));
+  var safeName = name.replace(/[^a-zA-Z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+  var dateVal = gv('t-date');
+  var safeDate = dateVal ? dateVal : new Date().toISOString().slice(0,10);
+  return safeName+'_'+safeDate+'.pdf';
+}
 function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
 function showOvl(m){var e=document.getElementById('ovl');if(e)e.classList.add('show');var t=document.getElementById('spin-txt');if(t)t.textContent=m||'Working...';}
 function hideOvl(){var e=document.getElementById('ovl');if(e)e.classList.remove('show');}
@@ -848,7 +855,7 @@ async function generatePDF(returnBlob){
     if(rcptURLs.length){ doc.addPage(); await drawRcptPage(doc,rcptURLs); }
     hideOvl();
     if(returnBlob) return doc.output('blob');
-    doc.save('SkyElectric_Expense_Claim.pdf');
+    doc.save(buildFileName());
     toast('PDF downloaded!','ok');
   } catch(e){
     hideOvl();
@@ -1272,7 +1279,7 @@ function drawPage2(doc, d) {
   doc.setFont('helvetica','normal'); doc.setFontSize(8);
   doc.text((d.emp||'Mateen Arif'),           m,      y);
   doc.text((d.mgr||'Mr. Ghazanfal Ali'),     m+80,   y);
-  doc.text((d.rd||'Hussain Khan'),     m+140,  y);
+  doc.text((d.rd||'Mr. Umair Shakeel'),     m+140,  y);
   y += 18;
   // Embed traveler signature between name and line
   if(sigDataURL){
@@ -1284,7 +1291,7 @@ function drawPage2(doc, d) {
   doc.line(m+140, y, rm, y);
   [[m,'Signature:','Project Engineer'],
    [m+80,'Signature:','Operations Lead'],
-   [m+140,'Signature:','VP']].forEach(function(x) {
+   [m+140,'Signature:','Director Operations']].forEach(function(x) {
     doc.setFont('helvetica','normal'); doc.setFontSize(8);
     doc.text(x[1], x[0], y+5);
     doc.text(x[2], x[0], y+10);
