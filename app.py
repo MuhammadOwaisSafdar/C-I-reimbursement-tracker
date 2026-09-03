@@ -631,7 +631,7 @@ with tabs[2]:
         "'Download PDF' button as usual, then come back to the form above and attach "
         "that PDF under 'Original approved bill PDF' when you save the bill."
     )
-    st.link_button("Open SkyElectric Expense Claim Form", url="app/static/expense_claim_form.html")
+    st.link_button("Open SkyElectric Expense Claim Form", url="/app/static/expense_claim_form.html")
 
 # ---------------------------------------------------------------
 # ARCHIVE — fully paid bills removed from the active ledger at month close
