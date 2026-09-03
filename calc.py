@@ -45,3 +45,11 @@ def days_outstanding(date_submitted, bill_amount, reimbursed_amount, today=None)
         return ""
     today = today or date.today()
     return (today - d).days
+
+
+def is_late_submission(date_submitted):
+    """Company rule: bills must be submitted on or before the 3rd of the month."""
+    d = parse_date(date_submitted)
+    if d is None:
+        return False
+    return d.day > 3

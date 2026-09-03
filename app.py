@@ -4,6 +4,9 @@ Run with:  streamlit run app.py
 """
 
 import os
+import io
+import zipfile
+import base64
 from datetime import date
 
 import pandas as pd
@@ -12,6 +15,7 @@ import streamlit as st
 import db
 import calc
 import auth
+import notify
 
 st.set_page_config(page_title="C&I Reimbursement Tracker", page_icon="💼", layout="wide")
 db.init_db()
@@ -101,6 +105,7 @@ if st.session_state.user is None:
 
 current_user = st.session_state.user
 is_manager = current_user["role"] == "manager"
+is_handler = current_user["role"] == "handler"
 
 # ---------------------------------------------------------------
 # HELPERS
@@ -109,7 +114,8 @@ is_manager = current_user["role"] == "manager"
 def load_dataframe(employee_filter=None):
     rows = db.get_all_bills(employee_name=employee_filter)
     cols = ["id", "employee_name", "description", "date_submitted", "period", "bill_amount",
-            "reimbursed_amount", "clearing_date", "screenshot_path", "approved_pdf_path", "remarks"]
+            "reimbursed_amount", "clearing_date", "screenshot_path", "approved_pdf_path", "remarks",
+            "approval_status", "netsuite_status", "netsuite_upload_date"]
     if not rows:
         return pd.DataFrame(columns=cols)
     df = pd.DataFrame(rows)
@@ -143,6 +149,19 @@ def file_exists(p):
         return False
 
 
+def render_pdf_viewer(pdf_path, label="View PDF"):
+    """Shows a PDF inline inside an expander, using the browser's built-in PDF viewer."""
+    with open(pdf_path, "rb") as f:
+        data = f.read()
+    b64 = base64.b64encode(data).decode()
+    with st.expander(label):
+        st.markdown(
+            f'<iframe src="data:application/pdf;base64,{b64}" width="100%" height="500" '
+            f'style="border: 1px solid #E3E8EF; border-radius: 6px;"></iframe>',
+            unsafe_allow_html=True,
+        )
+
+
 # ---------------------------------------------------------------
 # HEADER / SIDEBAR
 # ---------------------------------------------------------------
@@ -155,13 +174,105 @@ st.title("Reimbursement Tracker")
 
 if is_manager:
     tab_names = ["Dashboard", "All Bills", "Add New Bill", "Manage Team"]
+elif is_handler:
+    tab_names = ["Dashboard", "Bills to Upload"]
 else:
     tab_names = ["My Dashboard", "My Bills", "Add New Bill"]
 
 tabs = st.tabs(tab_names)
 
-# For an employee, everything is scoped to their own name automatically.
-scope_employee = None if is_manager else current_user["display_name"]
+# Manager and handler both see everyone's bills; an employee only sees their own.
+scope_employee = None if (is_manager or is_handler) else current_user["display_name"]
+
+# ---------------------------------------------------------------
+# HANDLER / DRAFTSMAN — approved bills, NetSuite upload tracking
+# ---------------------------------------------------------------
+if is_handler:
+    with tabs[0]:
+        all_df = load_dataframe(None)
+        approved_df = all_df[all_df["approval_status"] == "Approved"] if not all_df.empty else all_df
+
+        total_approved = len(approved_df)
+        uploaded_count = (approved_df["netsuite_status"] == "Uploaded").sum() if not approved_df.empty else 0
+        not_uploaded_count = total_approved - uploaded_count
+        approved_amount = approved_df["bill_amount"].sum() if not approved_df.empty else 0
+        uploaded_amount = approved_df.loc[approved_df["netsuite_status"] == "Uploaded", "bill_amount"].sum() \
+            if not approved_df.empty else 0
+        pending_upload_amount = approved_amount - uploaded_amount
+
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Approved Bills", total_approved)
+        c2.metric("Uploaded to NetSuite", int(uploaded_count))
+        c3.metric("Not Yet Uploaded", int(not_uploaded_count))
+        c4.metric("Approved Amount", f"{approved_amount:,.0f}")
+        c5.metric("Amount Pending Upload", f"{pending_upload_amount:,.0f}")
+
+        st.divider()
+        st.subheader("Not Yet Uploaded, by Employee")
+        if not approved_df.empty:
+            pending_df = approved_df[approved_df["netsuite_status"] != "Uploaded"]
+            if not pending_df.empty:
+                st.bar_chart(pending_df.groupby("employee_name")["bill_amount"].sum())
+            else:
+                st.caption("Everything approved so far has been uploaded.")
+        else:
+            st.caption("No approved bills yet.")
+
+    with tabs[1]:
+        employee_options = ["All"] + auth.all_employee_names()
+        filt = st.selectbox("Filter by employee", employee_options, key="handler_filter")
+        status_filt = st.radio("Show", ["Not Uploaded", "Uploaded", "All"], horizontal=True)
+
+        all_df = load_dataframe(None if filt == "All" else filt)
+        approved_df = all_df[all_df["approval_status"] == "Approved"] if not all_df.empty else all_df
+        if status_filt != "All" and not approved_df.empty:
+            approved_df = approved_df[approved_df["netsuite_status"] == status_filt]
+
+        if approved_df.empty:
+            st.info("No approved bills match this view.")
+        else:
+            pdf_rows = approved_df[approved_df["approved_pdf_path"].apply(file_exists)]
+            if not pdf_rows.empty:
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for _, r in pdf_rows.iterrows():
+                        path = r["approved_pdf_path"]
+                        filename = f"{r['id']}_{r['description']}{os.path.splitext(path)[1]}"
+                        filename = "".join(c for c in filename if c not in '\\/:*?"<>|')
+                        if filt == "All":
+                            safe_employee = "".join(c for c in r["employee_name"] if c not in '\\/:*?"<>|').strip() or "Unassigned"
+                            arcname = f"{safe_employee}/{filename}"
+                        else:
+                            arcname = filename
+                        zf.write(path, arcname=arcname)
+                zip_buffer.seek(0)
+                st.download_button(
+                    "Download these approved bill PDFs (ZIP)", data=zip_buffer,
+                    file_name="approved_bills.zip", mime="application/zip",
+                )
+                st.caption(f"{len(pdf_rows)} bill(s) with an approved PDF, ready for NetSuite.")
+
+            st.divider()
+            for _, r in approved_df.sort_values("date_submitted").iterrows():
+                with st.container(border=True):
+                    cols = st.columns([3, 2, 2, 2])
+                    cols[0].write(f"**{r['description']}** — {r['employee_name']}")
+                    cols[1].write(f"Amount: {r['bill_amount']:,.0f}")
+                    cols[2].write(f"NetSuite: **{r['netsuite_status']}**")
+                    if r["netsuite_status"] == "Uploaded" and r.get("netsuite_upload_date"):
+                        cols[2].caption(f"Uploaded {r['netsuite_upload_date']}")
+                    with cols[3]:
+                        if r["netsuite_status"] != "Uploaded":
+                            if st.button("Mark uploaded", key=f"upload_{r['id']}"):
+                                db.set_netsuite_status(int(r["id"]), "Uploaded", date.today().isoformat())
+                                st.rerun()
+                        else:
+                            if st.button("Revert to not uploaded", key=f"revert_{r['id']}"):
+                                db.set_netsuite_status(int(r["id"]), "Not Uploaded", None)
+                                st.rerun()
+                    if file_exists(r.get("approved_pdf_path")):
+                        render_pdf_viewer(r["approved_pdf_path"], label=f"View PDF — bill #{r['id']}")
+    st.stop()
 
 # ---------------------------------------------------------------
 # DASHBOARD
@@ -180,14 +291,18 @@ with tabs[0]:
     balance_outstanding = df["balance_due"].sum() if not df.empty else 0
     fully_cleared = (df["status"] == "Cleared").sum() if not df.empty else 0
     still_open = total_bills - fully_cleared
+    late_count = df["date_submitted"].apply(calc.is_late_submission).sum() if not df.empty else 0
+    pending_approval = (df["approval_status"] == "Pending Approval").sum() if not df.empty else 0
 
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8)
     c1.metric("Total Bills", total_bills)
     c2.metric("Total Billed", f"{total_billed:,.0f}")
     c3.metric("Total Reimbursed", f"{total_reimbursed:,.0f}")
     c4.metric("Balance Outstanding", f"{balance_outstanding:,.0f}")
     c5.metric("Fully Cleared", fully_cleared)
     c6.metric("Partial / Pending", still_open)
+    c7.metric("Late Submissions", int(late_count))
+    c8.metric("Pending Approval", int(pending_approval))
 
     st.divider()
     left, right = st.columns(2)
@@ -233,14 +348,43 @@ with tabs[1]:
         st.caption("Edit Reimbursed Amount, dates, or Remarks directly below, then press Save changes. "
                     "Balance Due and Status update on their own.")
 
+        pdf_rows = df[df["approved_pdf_path"].apply(file_exists)]
+        if not pdf_rows.empty:
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                for _, r in pdf_rows.iterrows():
+                    path = r["approved_pdf_path"]
+                    filename = f"{r['id']}_{r['description']}{os.path.splitext(path)[1]}"
+                    filename = "".join(c for c in filename if c not in '\\/:*?"<>|')
+                    if is_manager and filt == "All":
+                        safe_employee = "".join(c for c in r["employee_name"] if c not in '\\/:*?"<>|').strip() or "Unassigned"
+                        arcname = f"{safe_employee}/{filename}"
+                    else:
+                        arcname = filename
+                    zf.write(path, arcname=arcname)
+            zip_buffer.seek(0)
+            if is_manager:
+                label = "Download all approved bill PDFs (ZIP, by employee folder)" if filt == "All" \
+                    else f"Download {filt}'s approved bill PDFs (ZIP)"
+            else:
+                label = "Download my approved bill PDFs (ZIP)"
+            st.download_button(
+                label, data=zip_buffer, file_name="approved_bills.zip", mime="application/zip",
+            )
+            st.caption(f"{len(pdf_rows)} bill(s) with an approved PDF attached.")
+        else:
+            st.caption("No approved bill PDFs attached yet for this view.")
+
         display_df = df.copy()
         display_df["Screenshot"] = display_df["screenshot_path"].apply(
             lambda p: "Attached" if file_exists(p) else "None")
         display_df["Approved PDF"] = display_df["approved_pdf_path"].apply(
             lambda p: "Attached" if file_exists(p) else "None")
+        display_df["Submission"] = display_df["date_submitted"].apply(
+            lambda d: "Late (after 3rd)" if calc.is_late_submission(d) else "On time")
 
-        show_cols = ["id", "employee_name", "description", "date_submitted", "period", "month",
-                     "bill_amount", "reimbursed_amount", "balance_due", "status",
+        show_cols = ["id", "employee_name", "description", "date_submitted", "Submission", "period", "month",
+                     "bill_amount", "reimbursed_amount", "balance_due", "status", "approval_status",
                      "clearing_date", "days_outstanding", "Screenshot", "Approved PDF", "remarks"]
 
         col_config = {
@@ -248,12 +392,16 @@ with tabs[1]:
             "employee_name": st.column_config.TextColumn("Employee", disabled=not is_manager),
             "description": st.column_config.TextColumn("Bill / Expense Description"),
             "date_submitted": st.column_config.TextColumn("Date Submitted (YYYY-MM-DD)"),
+            "Submission": st.column_config.TextColumn("Submission", disabled=True),
             "period": st.column_config.TextColumn("Period"),
             "month": st.column_config.TextColumn("Month", disabled=True),
             "bill_amount": st.column_config.NumberColumn("Bill Amount"),
             "reimbursed_amount": st.column_config.NumberColumn("Reimbursed Amount"),
             "balance_due": st.column_config.NumberColumn("Balance Due", disabled=True),
             "status": st.column_config.TextColumn("Status", disabled=True),
+            "approval_status": st.column_config.SelectboxColumn(
+                "Approval", options=["Pending Approval", "Approved", "Disapproved"],
+                disabled=not is_manager),
             "clearing_date": st.column_config.TextColumn("Clearing Date (YYYY-MM-DD)"),
             "days_outstanding": st.column_config.TextColumn("Days Outstanding", disabled=True),
             "Screenshot": st.column_config.TextColumn("Screenshot", disabled=True),
@@ -281,12 +429,13 @@ with tabs[1]:
                     screenshot_path=original["screenshot_path"],
                     approved_pdf_path=original["approved_pdf_path"],
                     remarks=row["remarks"],
+                    approval_status=row["approval_status"] if is_manager else original["approval_status"],
                 )
             st.success("Changes saved.")
             st.rerun()
 
         st.divider()
-        st.subheader("Attach files to a bill")
+        st.subheader("View or attach files for a bill")
         bill_choice = st.selectbox(
             "Select a bill",
             options=df["id"].tolist(),
@@ -319,8 +468,23 @@ with tabs[1]:
             if file_exists(current.get("screenshot_path")):
                 st.image(current["screenshot_path"], caption="Screenshot", width=300)
             if file_exists(current.get("approved_pdf_path")):
+                render_pdf_viewer(current["approved_pdf_path"], label="View approved bill PDF")
                 with open(current["approved_pdf_path"], "rb") as f:
                     st.download_button("Download approved bill PDF", f, file_name=os.path.basename(current["approved_pdf_path"]))
+
+            st.write(f"**Approval status:** {current['approval_status']}")
+            if is_manager:
+                colApp, colDis = st.columns(2)
+                with colApp:
+                    if st.button("Approve this bill", type="primary"):
+                        db.set_approval_status(current["id"], "Approved")
+                        st.success("Bill approved.")
+                        st.rerun()
+                with colDis:
+                    if st.button("Disapprove this bill"):
+                        db.set_approval_status(current["id"], "Disapproved")
+                        st.warning("Bill disapproved.")
+                        st.rerun()
 
         if is_manager:
             st.divider()
@@ -340,6 +504,7 @@ with tabs[1]:
 # ---------------------------------------------------------------
 with tabs[2]:
     st.subheader("Add a new bill")
+    st.info("Company rule: bills must be submitted on or before the 3rd of the month.")
     with st.form("add_bill_form", clear_on_submit=True):
         if is_manager:
             employee_name = st.selectbox("Employee", auth.all_employee_names())
@@ -361,10 +526,22 @@ with tabs[2]:
             approved_pdf = st.file_uploader("Original approved bill PDF (optional)", type=["pdf"])
         remarks = st.text_area("Remarks")
 
+        manager_override = False
+        if is_manager:
+            manager_override = st.checkbox(
+                "Confirm late submission (only needed if Date of Submission is after the 3rd)")
+
         submitted = st.form_submit_button("Save bill", type="primary")
         if submitted:
+            late = calc.is_late_submission(date_submitted)
             if not description.strip():
                 st.error("Bill description is required.")
+            elif late and not is_manager:
+                st.error(
+                    "Bills must be submitted on or before the 3rd of the month. "
+                    "This date is late — please ask your manager to add it if it must be backdated.")
+            elif late and is_manager and not manager_override:
+                st.error("Check the confirmation box above to save a late submission.")
             else:
                 db.add_bill(
                     employee_name=employee_name,
@@ -388,6 +565,15 @@ with tabs[2]:
                                     bill["clearing_date"], shot_path or bill["screenshot_path"],
                                     pdf_path or bill["approved_pdf_path"], bill["remarks"])
                 st.success("Bill saved.")
+
+                sent, msg = notify.send_bill_notification(
+                    employee_name=employee_name, description=description.strip(),
+                    bill_amount=bill_amount, date_submitted=date_submitted.isoformat(), bill_id=new_id,
+                )
+                if sent:
+                    st.caption("Manager notified by email.")
+                else:
+                    st.caption(msg)
                 st.rerun()
 
 # ---------------------------------------------------------------
@@ -405,7 +591,7 @@ if is_manager:
             new_display = st.text_input("Full name (shown on bills)")
             new_username = st.text_input("Username (for login)")
             new_password = st.text_input("Password", type="password")
-            new_role = st.selectbox("Role", ["employee", "manager"])
+            new_role = st.selectbox("Role", ["employee", "manager", "handler"])
             add_clicked = st.form_submit_button("Add team member", type="primary")
             if add_clicked:
                 if not (new_display and new_username and new_password):

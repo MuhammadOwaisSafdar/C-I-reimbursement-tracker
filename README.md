@@ -1,9 +1,9 @@
 # Reimbursement Tracker (multi-user)
 
 A local/online app for tracking team reimbursement bills — dashboard, per-employee
-tracking, dropdowns, date pickers, and file attachments (screenshots + the original
-approved bill as a PDF). Data is saved to a SQLite file (`reimbursements.db`) in this
-folder.
+tracking, dropdowns, date pickers, file attachments (screenshots + the original
+approved bill as a PDF), a manager approval workflow, and an email alert whenever
+someone submits a new bill.
 
 ## First-time login
 
@@ -14,21 +14,66 @@ The app creates two starter accounts the first time it runs:
 | manager     | manager123 | Manager  |
 | employee1   | pass123    | Employee |
 
-Sign in as **manager**, go to the **Manage Team** tab, and add your real team members
-there (set their own usernames/passwords). You can remove the starter `employee1`
-account once you've added real people. Change the manager password too — open
-`users.json` in a text editor and edit the `password` field for `manager`.
+Sign in as **manager**, go to **Manage Team**, and add your real team members there.
+Remove the starter `employee1` account once real people are added.
 
-This is basic, plaintext-password login meant for a small trusted team — not
-suitable for sensitive/regulated data or a large organization.
+## Approval workflow
+
+Every new bill starts as **Pending Approval**. The manager can Approve or Disapprove
+it either from the dropdown in the bills table, or with the one-click Approve/
+Disapprove buttons under "View or attach files for a bill". This status is separate
+from the reimbursement Status (Pending/Partially Cleared/Cleared) — approval is
+about whether the expense is allowed at all; reimbursement status is about whether
+it's been paid back.
+
+## Email notifications
+
+Whenever anyone submits a new bill, the app tries to email the manager with the
+employee's name, the amount, and the bill description — plain text only, no
+links (some IT policies block emails containing links, so this is left out on
+purpose). This needs a one-time setup:
+
+1. Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` (same folder
+   structure, just remove `.example` from the name).
+2. Fill in the `[email]` section:
+   - `smtp_server` / `smtp_port` — for Gmail, use `smtp.gmail.com` and `587`.
+   - `sender_email` — the Gmail address the notification is sent *from* (can be a
+     dedicated account you create just for this).
+   - `sender_password` — **not your normal Gmail password.** Turn on 2-Step
+     Verification on that Google account, then create an "App Password" at
+     myaccount.google.com/apppasswords and use that 16-character code here.
+   - `manager_email` — where the notification should land.
+3. **Never commit `secrets.toml` to GitHub** — it contains a password.
+4. **On Streamlit Community Cloud**, secrets work differently: open your app, go to
+   Settings > Secrets, and paste the same `[email]` block there instead of uploading
+   a file. That keeps the password off GitHub entirely.
+
+If email isn't set up yet, the app still works fine — bills save normally, and a
+small note explains that email isn't configured instead of failing.
 
 ## What each role sees
 
 - **Manager** — Dashboard and All Bills show every employee's bills (with a filter
   to view one person at a time), can add a bill on behalf of any team member,
-  can edit or delete any bill, and manages team accounts in Manage Team.
-- **Employee** — sees only their own bills and dashboard, can add their own bills,
-  cannot see or edit anyone else's data.
+  approve/disapprove bills, edit or delete any bill, and manages team accounts in
+  Manage Team.
+- **Handler / Draftsman** — a separate role for whoever actually uploads approved
+  bills into NetSuite. Sees only bills the manager has already Approved, tracks
+  each one as "Not Uploaded" or "Uploaded" (with the date), can view or download
+  the approved PDF for each, and can bulk-download all pending ones as a ZIP. Can't
+  approve/disapprove bills, add new bills, or manage the team — just the upload
+  step after approval.
+- **Employee** — sees only their own bills and dashboard, can add their own bills
+  (blocked after the 3rd of the month — see below), and can view their own approval
+  status, but cannot approve bills or see anyone else's data.
+
+## Submission deadline rule
+
+Bills must be dated on or before the 3rd of the month. An employee trying to save a
+later date gets blocked with an explanation. The manager can still add a late entry,
+but must tick a confirmation checkbox first. Every bill list shows a "Submission"
+column (On time / Late) so this is visible at a glance, and the Dashboard has a
+"Late Submissions" count.
 
 ## Setup (one time)
 
@@ -48,20 +93,18 @@ Opens at `http://localhost:8501`.
 
 - `app.py` — the Streamlit app
 - `db.py` — SQLite storage (all bill reads/writes go through here)
-- `calc.py` — balance / status / days-outstanding calculations
+- `calc.py` — balance / status / late-submission calculations
 - `auth.py` — user accounts (stored in `users.json`, created on first run)
+- `notify.py` — sends the manager email when a new bill is submitted
+- `.streamlit/secrets.toml.example` — template for email settings (copy and fill in)
 - `reimbursements.db` — created automatically on first run
 - `screenshots/` — uploaded screenshots and approved-bill PDFs are saved here
 
-## Putting it online (so your manager and team can use it from anywhere)
+## Data persistence — please read
 
-The simplest free option is **Streamlit Community Cloud**. Ask me and I'll walk
-you through it step by step — it takes a free GitHub account and about 10 minutes,
-no coding involved.
-
-One thing worth knowing upfront: on the free tier, the app's storage isn't
-guaranteed to be permanent — if the app redeploys or sleeps for a long time,
-uploaded files and the database could reset. For a small team logging bills
-regularly, this is usually fine in practice, but if you can't afford to ever
-lose data, ask me about connecting it to a small free cloud database instead
-of the local file — that's a bit more setup but fully persistent.
+This still uses a local SQLite file and local folder for storage. On Streamlit
+Community Cloud's free tier, that storage isn't guaranteed to survive every
+restart or redeploy — it has already reset unexpectedly once. If losing data isn't
+acceptable, ask about switching to Google Sheets + Drive or a small free cloud
+database (Supabase) for guaranteed persistence — that's a separate, slightly bigger
+change from everything else in this file.

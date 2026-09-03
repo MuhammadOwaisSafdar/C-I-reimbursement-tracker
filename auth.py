@@ -50,4 +50,10 @@ def delete_user(username):
 
 
 def all_employee_names():
+    """Only people with the 'employee' role — used for whom a bill can be attributed to."""
+    return [u["display_name"] for u in load_users() if u["role"] == "employee"]
+
+
+def all_display_names():
+    """Every account, regardless of role — used for team management listings."""
     return [u["display_name"] for u in load_users()]

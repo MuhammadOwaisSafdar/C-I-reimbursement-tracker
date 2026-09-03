@@ -34,43 +34,78 @@ def init_db():
             clearing_date TEXT,
             screenshot_path TEXT,
             approved_pdf_path TEXT,
-            remarks TEXT
+            remarks TEXT,
+            approval_status TEXT NOT NULL DEFAULT 'Pending Approval',
+            netsuite_status TEXT NOT NULL DEFAULT 'Not Uploaded',
+            netsuite_upload_date TEXT
         )
         """
     )
+    # Migrations for databases created before these columns existed.
+    existing_cols = [row["name"] for row in conn.execute("PRAGMA table_info(bills)").fetchall()]
+    if "approval_status" not in existing_cols:
+        conn.execute("ALTER TABLE bills ADD COLUMN approval_status TEXT NOT NULL DEFAULT 'Pending Approval'")
+    if "netsuite_status" not in existing_cols:
+        conn.execute("ALTER TABLE bills ADD COLUMN netsuite_status TEXT NOT NULL DEFAULT 'Not Uploaded'")
+    if "netsuite_upload_date" not in existing_cols:
+        conn.execute("ALTER TABLE bills ADD COLUMN netsuite_upload_date TEXT")
     conn.commit()
     conn.close()
 
 
 def add_bill(employee_name, description, date_submitted, period, bill_amount,
-             reimbursed_amount, clearing_date, screenshot_path, approved_pdf_path, remarks):
+             reimbursed_amount, clearing_date, screenshot_path, approved_pdf_path, remarks,
+             approval_status="Pending Approval"):
     conn = get_connection()
     conn.execute(
         """
         INSERT INTO bills
             (employee_name, description, date_submitted, period, bill_amount,
-             reimbursed_amount, clearing_date, screenshot_path, approved_pdf_path, remarks)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             reimbursed_amount, clearing_date, screenshot_path, approved_pdf_path, remarks, approval_status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (employee_name, description, date_submitted, period, bill_amount,
-         reimbursed_amount, clearing_date, screenshot_path, approved_pdf_path, remarks),
+         reimbursed_amount, clearing_date, screenshot_path, approved_pdf_path, remarks, approval_status),
     )
     conn.commit()
     conn.close()
 
 
 def update_bill(bill_id, employee_name, description, date_submitted, period, bill_amount,
-                 reimbursed_amount, clearing_date, screenshot_path, approved_pdf_path, remarks):
+                 reimbursed_amount, clearing_date, screenshot_path, approved_pdf_path, remarks,
+                 approval_status=None):
     conn = get_connection()
+    if approval_status is None:
+        existing = conn.execute("SELECT approval_status FROM bills WHERE id = ?", (bill_id,)).fetchone()
+        approval_status = existing["approval_status"] if existing else "Pending Approval"
     conn.execute(
         """
         UPDATE bills
         SET employee_name = ?, description = ?, date_submitted = ?, period = ?, bill_amount = ?,
-            reimbursed_amount = ?, clearing_date = ?, screenshot_path = ?, approved_pdf_path = ?, remarks = ?
+            reimbursed_amount = ?, clearing_date = ?, screenshot_path = ?, approved_pdf_path = ?, remarks = ?,
+            approval_status = ?
         WHERE id = ?
         """,
         (employee_name, description, date_submitted, period, bill_amount,
-         reimbursed_amount, clearing_date, screenshot_path, approved_pdf_path, remarks, bill_id),
+         reimbursed_amount, clearing_date, screenshot_path, approved_pdf_path, remarks,
+         approval_status, bill_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def set_approval_status(bill_id, approval_status):
+    conn = get_connection()
+    conn.execute("UPDATE bills SET approval_status = ? WHERE id = ?", (approval_status, bill_id))
+    conn.commit()
+    conn.close()
+
+
+def set_netsuite_status(bill_id, netsuite_status, upload_date=None):
+    conn = get_connection()
+    conn.execute(
+        "UPDATE bills SET netsuite_status = ?, netsuite_upload_date = ? WHERE id = ?",
+        (netsuite_status, upload_date, bill_id),
     )
     conn.commit()
     conn.close()
