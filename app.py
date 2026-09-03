@@ -13,7 +13,7 @@ import db
 import calc
 import auth
 
-st.set_page_config(page_title="Reimbursement Tracker", layout="wide")
+st.set_page_config(page_title="C&I Reimbursement Tracker", page_icon="💼", layout="wide")
 db.init_db()
 
 
@@ -24,18 +24,79 @@ if "user" not in st.session_state:
     st.session_state.user = None
 
 if st.session_state.user is None:
-    st.title("Reimbursement Tracker — Sign in")
-    with st.form("login_form"):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        login_clicked = st.form_submit_button("Sign in", type="primary")
-    if login_clicked:
-        user = auth.check_login(username.strip(), password)
-        if user:
-            st.session_state.user = user
-            st.rerun()
-        else:
-            st.error("Incorrect username or password.")
+    st.markdown(
+        """
+        <style>
+        #MainMenu, footer, header {visibility: hidden;}
+        .login-hero {
+            background: linear-gradient(135deg, #1F4E78 0%, #2E6DA4 100%);
+            padding: 36px 40px;
+            border-radius: 14px 14px 0 0;
+            color: white;
+            text-align: center;
+        }
+        .login-hero h1 {
+            margin: 0;
+            font-size: 26px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+        .login-hero p {
+            margin: 6px 0 0 0;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .login-card {
+            border: 1px solid #E3E8EF;
+            border-radius: 0 0 14px 14px;
+            padding: 28px 40px 32px 40px;
+            background: #FFFFFF;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.06);
+        }
+        .login-footer {
+            text-align: center;
+            font-size: 12px;
+            color: #8A93A3;
+            margin-top: 14px;
+        }
+        div[data-testid="stForm"] {
+            border: none;
+            padding: 0;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    _, mid, _ = st.columns([1, 1.1, 1])
+    with mid:
+        st.markdown(
+            """
+            <div class="login-hero">
+                <h1>Sky Electric (Pvt.) Ltd.</h1>
+                <p>C&amp;I Operations &nbsp;•&nbsp; Reimbursement Tracker</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown('<div class="login-card">', unsafe_allow_html=True)
+        st.caption("Track submission, clearance, and outstanding balances for Commercial & Industrial project expenses.")
+        with st.form("login_form"):
+            username = st.text_input("Username", placeholder="e.g. owais")
+            password = st.text_input("Password", type="password", placeholder="••••••••")
+            login_clicked = st.form_submit_button("Sign in", type="primary", use_container_width=True)
+        if login_clicked:
+            user = auth.check_login(username.strip(), password)
+            if user:
+                st.session_state.user = user
+                st.rerun()
+            else:
+                st.error("Incorrect username or password.")
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown(
+            '<div class="login-footer">Internal use only — Sky Electric C&amp;I Operations</div>',
+            unsafe_allow_html=True,
+        )
     st.stop()
 
 current_user = st.session_state.user
