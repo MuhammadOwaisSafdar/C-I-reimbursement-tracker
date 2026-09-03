@@ -165,11 +165,11 @@ def render_pdf_viewer(pdf_path, label="View PDF"):
 
 
 @st.cache_resource
-def expense_form_data_url():
-    """Builds a fully self-contained data: URL for the expense claim form — the HTML
-    with jsPDF inlined directly into it — so opening it makes zero server requests
-    (sidesteps Streamlit's static-file serving, which forces .html/.js to text/plain
-    and can hang/break depending on the deployment)."""
+def expense_form_base64():
+    """Builds a fully self-contained base64 blob of the expense claim form — the
+    HTML with jsPDF inlined directly into it — so opening it makes zero server
+    requests (sidesteps Streamlit's static-file serving, which forces .html/.js
+    to text/plain, and avoids putting a giant data: URL in the address bar)."""
     static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
     with open(os.path.join(static_dir, "expense_claim_form.html"), encoding="utf-8") as f:
         html = f.read()
@@ -179,8 +179,7 @@ def expense_form_data_url():
         '<script src="jspdf.umd.min.js"></script>',
         f"<script>{js}</script>",
     )
-    encoded = base64.b64encode(html.encode("utf-8")).decode("ascii")
-    return f"data:text/html;base64,{encoded}"
+    return base64.b64encode(html.encode("utf-8")).decode("ascii")
 
 
 # ---------------------------------------------------------------
@@ -650,13 +649,38 @@ with tabs[2]:
         "'Download PDF' button as usual, then come back to the form above and attach "
         "that PDF under 'Original approved bill PDF' when you save the bill."
     )
-    st.markdown(
-        f'<a href="{expense_form_data_url()}" target="_blank" rel="noopener" '
-        f'style="display:inline-block;background:#1F4E78;color:white;padding:10px 18px;'
-        f'border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">'
-        f'Open SkyElectric Expense Claim Form</a>',
-        unsafe_allow_html=True,
-    )
+    _form_b64 = expense_form_base64()
+    _button_html = f"""
+    <button id="openFormBtn" style="display:inline-block;background:#1F4E78;color:white;
+        padding:10px 18px;border-radius:8px;border:none;font-weight:600;font-size:14px;
+        cursor:pointer;font-family:inherit;">
+        Open SkyElectric Expense Claim Form
+    </button>
+    <div id="openFormStatus" style="margin-top:8px;font-size:12px;color:#8A93A3;font-family:inherit;"></div>
+    <script>
+    document.getElementById('openFormBtn').addEventListener('click', function() {{
+        var statusEl = document.getElementById('openFormStatus');
+        try {{
+            var b64 = "{_form_b64}";
+            var byteChars = atob(b64);
+            var byteNumbers = new Array(byteChars.length);
+            for (var i = 0; i < byteChars.length; i++) {{
+                byteNumbers[i] = byteChars.charCodeAt(i);
+            }}
+            var byteArray = new Uint8Array(byteNumbers);
+            var blob = new Blob([byteArray], {{ type: 'text/html;charset=utf-8' }});
+            var url = URL.createObjectURL(blob);
+            var w = window.open(url, '_blank');
+            if (!w) {{
+                statusEl.textContent = 'Your browser blocked the popup — allow popups for this site and click again.';
+            }}
+        }} catch (e) {{
+            statusEl.textContent = 'Could not open the form: ' + e.message;
+        }}
+    }});
+    </script>
+    """
+    st.components.v1.html(_button_html, height=70)
 
 # ---------------------------------------------------------------
 # ARCHIVE — fully paid bills removed from the active ledger at month close
