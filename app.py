@@ -626,14 +626,12 @@ with tabs[2]:
     st.divider()
     st.subheader("SkyElectric Expense Claim Form")
     st.caption(
-        "This is your original form, running exactly as-is inside the app — same tabs, "
-        "same Smart Wizard, same PDF export. Fill it out and tap 'Download PDF' at the "
-        "bottom as usual, then come back up to the form above and attach that PDF under "
-        "'Original approved bill PDF' when you save the bill."
+        "Opens your original form, full-screen, exactly as it's always worked — "
+        "same tabs, same Smart Wizard, same PDF export. Fill it out there, tap its "
+        "'Download PDF' button as usual, then come back to the form above and attach "
+        "that PDF under 'Original approved bill PDF' when you save the bill."
     )
-    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "expense_claim_form.html")) as f:
-        expense_form_html = f.read()
-    st.components.v1.html(expense_form_html, height=1400, scrolling=True)
+    st.link_button("Open SkyElectric Expense Claim Form", url="app/static/expense_claim_form.html")
 
 # ---------------------------------------------------------------
 # ARCHIVE — fully paid bills removed from the active ledger at month close

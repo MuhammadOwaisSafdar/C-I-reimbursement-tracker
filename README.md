@@ -70,20 +70,22 @@ small note explains that email isn't configured instead of failing.
   (blocked after the 3rd of the month — see below), and can view their own approval
   status, but cannot approve bills or see anyone else's data.
 
-## SkyElectric Expense Claim Form (your original tool, embedded)
+## SkyElectric Expense Claim Form (your original tool, hosted by the app)
 
-At the bottom of the Add New Bill tab, your actual expense claim form — the same
-HTML file, with all its tabs (Travel Request, Expense Claim, Send & Export), the
-Smart Wizard, the receipts, the real jsPDF-generated PDF — runs directly inside
-the app, unchanged. Fill it out and use its own "Download PDF" button exactly as
-before. Then scroll up to the Add New Bill form above and attach that downloaded
-PDF under "Original approved bill PDF" when you save the bill — that's the one
-extra step that connects the form's output to the ledger.
+At the bottom of the Add New Bill tab, an "Open SkyElectric Expense Claim Form"
+button opens your actual file — same HTML, same tabs (Travel Request, Expense
+Claim, Send & Export), same Smart Wizard, same real jsPDF-generated PDF — full
+screen in a new tab, exactly as it's always worked. It's served directly by this
+app (from the `static/` folder) rather than embedded in a cramped scrolling box.
+Fill it out, use its own "Download PDF" button as before, then come back to the
+Add New Bill form above and attach that downloaded PDF under "Original approved
+bill PDF" when you save the bill — that's the one extra step that connects the
+form's output to the ledger.
 
 This intentionally does not try to recreate the form in Python — that produced a
 lower-quality result. Running your real file is the only way to get an exact
 match, since its PDF generation is JavaScript that only your browser can execute;
-this app can host and display that file, but can't reach into what it produces to
+this app can host and serve that file, but can't reach into what it produces to
 save it automatically.
 
 ## Submission deadline rule
@@ -122,7 +124,8 @@ Opens at `http://localhost:8501`.
 - `calc.py` — balance / status / late-submission calculations
 - `auth.py` — user accounts (stored in `users.json`, created on first run)
 - `notify.py` — sends the manager email when a new bill is submitted
-- `assets/expense_claim_form.html` — your original expense claim form, embedded as-is
+- `static/expense_claim_form.html` — your original expense claim form, served as-is
+- `.streamlit/config.toml` — enables Streamlit's static file serving so the form above is reachable by URL
 - `.streamlit/secrets.toml.example` — template for email settings (copy and fill in)
 - `reimbursements.db` — created automatically on first run
 - `screenshots/` — uploaded screenshots and approved-bill PDFs are saved here

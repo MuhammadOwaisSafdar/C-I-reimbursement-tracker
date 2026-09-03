@@ -1,0 +1,1349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f0f1a">
+<title>SkyElectric Expenses</title>
+<style>
+:root{--bg:#0f0f1a;--surf:#1a1a2e;--card:#1e1e35;--bdr:#2a2a45;--grn:#7cfc94;--blu:#4fc3f7;--txt:#e8e8f0;--mut:#7878a0;--red:#ff6b6b;--r:12px}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;font-size:15px}
+
+/* ── Header ── */
+.hdr{position:sticky;top:0;z-index:100;background:var(--surf);border-bottom:1px solid var(--bdr);padding:12px 16px;display:flex;align-items:center;gap:10px}
+.hdr-logo{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#7cfc94,#4fc3f7);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+.hdr-title{font-size:15px;font-weight:600}.hdr-sub{font-size:10px;color:var(--mut);font-family:monospace}
+
+/* ── CSS-only tabs (radio inputs) ── */
+.tab-radios{display:none}
+.tabs{display:flex;background:var(--surf);border-bottom:1px solid var(--bdr);position:sticky;top:58px;z-index:99}
+.tab-lbl{flex:1;padding:12px 8px;font-size:12px;font-weight:500;color:var(--mut);cursor:pointer;border-bottom:2px solid transparent;text-align:center;white-space:nowrap;transition:color .15s,border-color .15s;user-select:none;-webkit-user-select:none}
+.tab-lbl:active{background:rgba(255,255,255,.04)}
+
+/* Show the right panel based on which radio is checked */
+#tab1:checked ~ * .tab-lbl[for="tab1"],
+#tab2:checked ~ * .tab-lbl[for="tab2"],
+#tab3:checked ~ * .tab-lbl[for="tab3"]{color:var(--grn);border-bottom-color:var(--grn)}
+
+.panel{display:none;padding:14px;max-width:680px;margin:0 auto}
+#tab1:checked ~ .panels > #panel-travel,
+#tab2:checked ~ .panels > #panel-expense,
+#tab3:checked ~ .panels > #panel-send{display:block}
+
+/* ── Sections ── */
+.sec{margin-bottom:18px}
+.sec-title{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--blu);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.sec-title::after{content:'';flex:1;height:1px;background:var(--bdr)}
+
+/* ── Grid ── */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+@media(max-width:460px){.g2{grid-template-columns:1fr}}
+.fld{display:flex;flex-direction:column;gap:4px}
+.fld label{font-size:10px;font-weight:500;color:var(--mut);text-transform:uppercase;letter-spacing:.4px}
+.fld input,.fld select,.fld textarea{background:var(--card);border:1px solid var(--bdr);border-radius:8px;color:var(--txt);font-family:inherit;font-size:14px;padding:9px 11px;outline:none;width:100%;-webkit-appearance:none;transition:border-color .15s}
+.fld input:focus,.fld select:focus,.fld textarea:focus{border-color:var(--blu)}
+.fld select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%237878a0' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:30px;cursor:pointer}
+
+/* ── Checkbox group ── */
+.chk-grp{background:var(--card);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden}
+.chk-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--bdr)}
+.chk-item:last-child{border-bottom:none}
+.chk-item input{display:none}
+.chkbox{width:18px;height:18px;border-radius:4px;border:1.5px solid var(--bdr);background:var(--bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;transition:all .15s}
+.chk-item input:checked~.chkbox{background:var(--grn);border-color:var(--grn)}
+.chk-item input:checked~.chkbox::after{content:'';width:10px;height:5px;border-left:2px solid #000;border-bottom:2px solid #000;transform:rotate(-45deg) translateY(1px);display:block}
+.chk-lbl{font-size:13px;flex:1}.chk-sub{font-size:11px;color:var(--mut);display:block;margin-top:2px}
+
+/* ── Radio (advance status) ── */
+.radios{display:flex;gap:8px;flex-wrap:wrap}
+.rad{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--bdr);border-radius:8px;padding:8px 12px;cursor:pointer;transition:border-color .15s}
+.rad input{display:none}.rad input:checked+span{color:var(--grn)}
+.rad:has(input:checked){border-color:var(--grn)}.rad span{font-size:13px}
+
+/* ── Total bar ── */
+.total-bar{display:flex;justify-content:flex-end;align-items:center;gap:10px;background:var(--card);border:1px solid var(--bdr);border-radius:var(--r);padding:10px 14px;margin-top:7px}
+.total-lbl{font-size:12px;font-weight:500;color:var(--mut)}.total-val{font-size:17px;font-weight:600;font-family:monospace;color:var(--grn)}
+
+/* ── Expense table ── */
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:var(--r);border:1px solid var(--bdr)}
+table{width:100%;border-collapse:collapse}
+th{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:var(--mut);padding:8px 6px;text-align:left;border-bottom:1px solid var(--bdr);white-space:nowrap}
+td{padding:2px 3px;vertical-align:middle}
+tr:nth-child(even) td{background:rgba(255,255,255,.018)}
+td input{background:transparent;border:1px solid transparent;border-radius:5px;color:var(--txt);font-family:inherit;font-size:12px;padding:5px;width:100%;outline:none;transition:border-color .15s}
+td input:focus{border-color:var(--blu);background:var(--card)}
+.rn{font-size:10px;color:var(--mut);font-family:monospace;text-align:center;width:22px}
+
+/* ── Receipts ── */
+.rcpt-list{background:var(--card);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden;min-height:50px}
+.rcpt-item{display:flex;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid var(--bdr);font-size:13px}
+.rcpt-item:last-child{border-bottom:none}
+.rcpt-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcpt-del{background:none;border:none;color:var(--red);cursor:pointer;font-size:15px;padding:2px 5px;border-radius:4px}
+.rcpt-empty{padding:14px;text-align:center;color:var(--mut);font-size:13px}
+
+/* ── Buttons ── */
+.btn{display:flex;align-items:center;justify-content:center;gap:7px;border:none;border-radius:var(--r);font-family:inherit;font-size:14px;font-weight:600;padding:13px 18px;cursor:pointer;transition:all .15s;width:100%;margin-top:7px}
+.btn-grn{background:var(--grn);color:#0f0f1a}.btn-grn:active{transform:scale(.98)}
+.btn-blu{background:#1a73e8;color:#fff}
+.btn-add{background:rgba(79,195,247,.1);color:var(--blu);border:1px solid rgba(79,195,247,.2);font-size:13px;padding:10px}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(120px);background:var(--surf);border:1px solid var(--bdr);color:var(--txt);padding:10px 20px;border-radius:30px;font-size:13px;z-index:9999;transition:transform .3s;white-space:nowrap;box-shadow:0 6px 24px rgba(0,0,0,.4);pointer-events:none}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.toast.ok{border-color:var(--grn);color:var(--grn)}.toast.err{border-color:var(--red);color:var(--red)}
+
+/* ── Spinner overlay ── */
+.ovl{display:none;position:fixed;inset:0;z-index:9998;background:rgba(15,15,26,.88);align-items:center;justify-content:center;flex-direction:column;gap:14px}
+.ovl.show{display:flex}
+.spin{width:38px;height:38px;border-radius:50%;border:3px solid var(--bdr);border-top-color:var(--grn);animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.spin-txt{font-size:13px;color:var(--mut)}
+/* ── Signature Upload ── */
+.sig-preview{display:none;margin-top:7px;background:var(--card);border:1px solid var(--bdr);border-radius:8px;padding:8px;text-align:center}
+.sig-preview img{max-height:80px;max-width:100%;object-fit:contain}
+
+/* ── DA / Smart Expense Wizard ── */
+.da-banner{background:rgba(124,252,148,.07);border:1px solid rgba(124,252,148,.2);border-radius:var(--r);padding:12px 14px;margin-top:9px;display:none}
+.da-banner.show{display:block}
+.da-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.da-label{font-size:13px;color:var(--txt)}
+.da-val{font-size:15px;font-weight:600;color:var(--grn);font-family:monospace;white-space:nowrap}
+.wizard-box{background:var(--card);border:1px solid rgba(124,252,148,.25);border-radius:var(--r);padding:14px;margin-top:9px;display:none}
+.wizard-box.show{display:block}
+.wizard-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--grn);margin-bottom:10px}
+.wiz-item{padding:10px 0;border-bottom:1px solid var(--bdr)}
+.wiz-item:last-child{border-bottom:none}
+.wiz-header{display:flex;align-items:center;gap:10px;cursor:pointer}
+.wiz-chk{width:18px;height:18px;border-radius:4px;border:1.5px solid var(--bdr);background:var(--bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.wiz-item.active .wiz-chk{background:var(--grn);border-color:var(--grn)}
+.wiz-item.active .wiz-chk::after{content:'';width:10px;height:5px;border-left:2px solid #000;border-bottom:2px solid #000;transform:rotate(-45deg) translateY(1px);display:block}
+.wiz-info{flex:1}
+.wiz-name{font-size:13px;color:var(--txt)}
+.wiz-sub{font-size:11px;color:var(--mut);margin-top:2px}
+.wiz-amt{font-size:13px;font-weight:600;color:var(--grn);font-family:monospace;white-space:nowrap}
+.wiz-input{background:var(--bg);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);font-family:inherit;font-size:13px;padding:5px 8px;width:120px;outline:none;text-align:right}
+.wiz-date{background:var(--bg);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);font-family:inherit;font-size:12px;padding:5px 8px;outline:none}
+.wiz-body{display:none;margin-top:8px;padding:8px 10px;background:rgba(255,255,255,.03);border-radius:8px;border:1px solid var(--bdr)}
+.wiz-item.active .wiz-body{display:block}
+.day-grid{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.day-btn{padding:4px 8px;border-radius:6px;font-size:11px;font-family:monospace;border:1px solid var(--bdr);background:var(--bg);color:var(--mut);cursor:pointer;transition:all .15s;user-select:none}
+.day-btn.on{background:var(--grn);color:#0f0f1a;border-color:var(--grn);font-weight:600}
+.rcpt-needed{font-size:11px;color:#ffa726;margin-top:2px}
+.wiz-row{display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap}
+.wiz-row label{font-size:11px;color:var(--mut);min-width:50px}
+
+hr{border:none;border-top:1px solid var(--bdr);margin:14px 0}
+
+/* ── Install banner ── */
+.ibanner{display:none;background:rgba(124,252,148,.08);border:1px solid rgba(124,252,148,.2);border-radius:var(--r);padding:12px 14px;margin:10px 14px 0;font-size:13px;color:var(--grn);cursor:pointer;align-items:center;gap:10px}
+.ibanner.show{display:flex}
+</style>
+</head>
+<body>
+<header class="hdr">
+  <div class="hdr-logo">&#9889;</div>
+  <div><div class="hdr-title">SkyElectric</div><div class="hdr-sub">Expense Forms</div></div>
+</header>
+
+<!-- CSS-only tab system: 3 hidden radio inputs MUST be direct siblings of .tabs and .panels -->
+<input class="tab-radios" type="radio" name="tabs" id="tab1" checked>
+<input class="tab-radios" type="radio" name="tabs" id="tab2">
+<input class="tab-radios" type="radio" name="tabs" id="tab3">
+
+<div class="tabs">
+  <label class="tab-lbl" for="tab1">Travel Request</label>
+  <label class="tab-lbl" for="tab2">Expense Claim</label>
+  <label class="tab-lbl" for="tab3">Send &amp; Export</label>
+</div>
+
+<!-- Install banner -->
+<div class="ibanner" id="install-banner" onclick="doInstall()">
+  <span style="font-size:20px">&#128242;</span>
+  <div><strong>Install as App</strong><br><span style="font-size:11px;color:var(--mut)">Tap to add to your home screen</span></div>
+</div>
+
+<div class="panels">
+
+<!-- ══ PANEL: TRAVEL REQUEST ════════════════════════════════════════════════ -->
+<div class="panel" id="panel-travel">
+  <div class="sec">
+    <div class="sec-title">Travel Information</div>
+    <div class="g2">
+      <div class="fld"><label>Date</label><input type="date" id="t-date"></div>
+      <div></div>
+      <div class="fld"><label>Employee Name</label><input type="text" id="t-name" placeholder="Full name"></div>
+      <div class="fld"><label>Designation</label><input type="text" id="t-desig" placeholder="e.g. Project Engineer"></div>
+      <div class="fld"><label>Department</label><input type="text" id="t-dept" value="C&amp;I Operations"></div>
+      <div class="fld"><label>Region</label><input type="text" id="t-region" value="Central"></div>
+      <div class="fld"><label>Departure Date</label><input type="date" id="t-dep"></div>
+      <div class="fld"><label>Return Date</label><input type="date" id="t-ret"></div>
+      <div class="fld"><label>Destination</label><input type="text" id="t-dest" placeholder="City / Site"></div>
+      <div class="fld"><label>Mode of Travel</label>
+        <select id="t-mode"><option value="">Select...</option><option>Own Vehicle</option><option>Careem / Uber</option><option>Bus</option><option>Train</option><option>Airfare</option><option>Mixed</option></select>
+      </div>
+    </div>
+    <div class="fld" style="margin-top:9px"><label>Purpose of Travel</label><input type="text" id="t-purpose" placeholder="Brief description"></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-title">Fuel</div>
+    <div class="chk-grp">
+      <label class="chk-item"><input type="checkbox" id="fl-local"><span class="chkbox"></span><span class="chk-lbl">Local commute bills (Careem / Uber)</span></label>
+      <label class="chk-item"><input type="checkbox" id="fl-vehicle"><span class="chkbox"></span><span class="chk-lbl">Own Vehicle<span class="chk-sub">Rs. 15 / km</span></span></label>
+      <label class="chk-item"><input type="checkbox" id="fl-airfare"><span class="chkbox"></span><span class="chk-lbl">Airfare / Bus fare / Train fare</span></label>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-title">Accommodation</div>
+    <div class="chk-grp">
+      <label class="chk-item"><input type="checkbox" id="ac-company"><span class="chkbox"></span><div class="chk-lbl">Bill To Company<span class="chk-sub">Admin arranges &middot; Upper Rs.18,000 &middot; Middle Rs.12,000 &middot; Junior Rs.8,000</span></div></label>
+      <label class="chk-item"><input type="checkbox" id="ac-private"><span class="chkbox"></span><span class="chk-lbl">Private Guest Arrangement<span class="chk-sub">50% in advance</span></span></label>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-title">Food</div>
+    <div class="chk-grp">
+      <label class="chk-item"><input type="checkbox" id="fd-upper"><span class="chkbox"></span><span class="chk-lbl">Upper Level Management<span class="chk-sub">As per Actual</span></span></label>
+      <label class="chk-item"><input type="checkbox" id="fd-middle"><span class="chkbox"></span><span class="chk-lbl">Middle Level Management<span class="chk-sub">Rs. 3,000 overnight / Rs. 2,000 same-day</span></span></label>
+      <label class="chk-item"><input type="checkbox" id="fd-junior"><span class="chkbox"></span><span class="chk-lbl">Junior Level Management<span class="chk-sub">Rs. 1,000 / day (fixed)</span></span></label>
+    </div>
+  </div>
+
+  <!-- DA auto-calc banner -->
+  <div class="da-banner" id="da-banner">
+    <div class="da-row">
+      <span class="da-label">&#128197; <span id="da-days-label">0 days</span> &times; <span id="da-rate-label">—</span> DA/day</span>
+      <span class="da-val" id="da-total-label">PKR 0</span>
+    </div>
+    <div style="font-size:11px;color:var(--mut);margin-top:4px">Junior: Rs. 1,000/day fixed &bull; Middle: Rs. 3,000 overnight / Rs. 2,000 same-day</div>
+  </div>
+
+  <!-- Smart expense wizard -->
+  <div class="wizard-box" id="wizard-box">
+    <div class="wizard-title">&#9889; What expenses do you need to claim?</div>
+    <div id="wiz-items"></div>
+    <button class="btn btn-grn" style="margin-top:12px" onclick="applyWizard()">&#10003; Apply to Expense Form</button>
+  </div>
+
+  <div class="sec">
+    <div class="sec-title">Advance Status</div>
+    <div class="radios">
+      <label class="rad"><input type="radio" name="adv" value="paid"><span>Advance Paid</span></label>
+      <label class="rad"><input type="radio" name="adv" value="not_paid"><span>Advance Not Paid</span></label>
+      <label class="rad"><input type="radio" name="adv" value="" checked><span>N/A</span></label>
+    </div>
+    <div class="total-bar" style="margin-top:10px">
+      <span class="total-lbl">Total Advance (from expenses)</span>
+      <span class="total-val" id="t-adv-display">PKR 0.00</span>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-title">Traveler's Signature</div>
+    <button class="btn btn-add" onclick="document.getElementById('sig-input').click()">&#128247; Upload Signature PNG</button>
+    <input type="file" id="sig-input" accept="image/png,image/*" style="display:none" onchange="loadSig(event)">
+    <div class="sig-preview" id="sig-preview">
+      <img id="sig-img" src="" alt="Signature preview">
+      <div style="font-size:11px;color:var(--grn);margin-top:4px">&#10003; Signature loaded — will appear on PDF</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PANEL: EXPENSE CLAIM ══════════════════════════════════════════════════ -->
+<div class="panel" id="panel-expense">
+  <div class="sec">
+    <div class="sec-title">Header</div>
+    <div class="g2">
+      <div class="fld"><label>Month</label><input type="month" id="e-month"></div>
+      <div class="fld"><label>Expense Type</label><input type="text" id="e-type" placeholder="e.g. Operations"></div>
+      <div class="fld"><label>Reason</label><input type="text" id="e-reason" placeholder="e.g. Site visit"></div>
+      <div class="fld"><label>Cost Centre</label><input type="text" id="e-cc" value="C&amp;I"></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-title">Common Fields (applied to all rows in PDF)</div>
+    <div class="g2">
+      <div class="fld"><label>Sale Order No.</label><input type="text" id="e-so" placeholder="e.g. 28074"></div>
+      <div class="fld"><label>Customer Name</label><input type="text" id="e-cust" placeholder="e.g. National Foods"></div>
+      <div class="fld"><label>Sale Type</label><input type="text" id="e-st" value="C&amp;I"></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-title">Expense Rows</div>
+    <div class="tbl-wrap">
+      <table><thead><tr>
+        <th style="width:22px">#</th>
+        <th style="min-width:110px">Date</th>
+        <th style="min-width:160px">Expense Details</th>
+        <th style="min-width:90px;text-align:right">Amount (PKR)</th>
+      </tr></thead>
+      <tbody id="exp-tbody"></tbody></table>
+    </div>
+    <div class="total-bar"><span class="total-lbl">TOTAL</span><span class="total-val" id="e-total">PKR 0.00</span></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-title">Receipts</div>
+    <div class="rcpt-list" id="rcpt-list"><div class="rcpt-empty">No receipts added yet</div></div>
+    <button class="btn btn-add" onclick="document.getElementById('rcpt-input').click()">+ Add Receipt Images</button>
+    <input type="file" id="rcpt-input" accept="image/*" multiple style="display:none" onchange="handleReceipts(event)">
+  </div>
+
+  <div class="sec">
+    <div class="sec-title">Signatories</div>
+    <div class="g2">
+      <div class="fld"><label>Employee Name</label><input type="text" id="e-emp" value="Mateen Arif"></div>
+      <div class="fld"><label>Operations Lead</label><input type="text" id="e-mgr" value="Mr. Ghazanfal Ali"></div>
+      <div class="fld"><label>VP</label><input type="text" id="e-rd" value="Hussain Khan"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PANEL: SEND & EXPORT ══════════════════════════════════════════════════ -->
+<div class="panel" id="panel-send">
+  <div class="sec">
+    <div class="sec-title">Generate PDF</div>
+    <button class="btn btn-grn" onclick="generatePDF(false)">&#8595; Download PDF (Both Pages)</button>
+  </div>
+  <hr>
+  <div class="sec">
+    <div class="sec-title">Send for Approval</div>
+    <div style="background:rgba(26,115,232,.08);border:1px solid rgba(26,115,232,.2);border-radius:var(--r);padding:12px">
+      <div class="g2">
+        <div class="fld"><label>Manager Email</label><input type="email" id="m-email" value="tayyab.rafique@skyelectric.com"></div>
+        <div class="fld"><label>CC (optional)</label><input type="email" id="cc-email" placeholder="cc@company.com"></div>
+        <div class="fld" style="grid-column:1/-1"><label>Subject</label><input type="text" id="m-subj" value="Travel Expense Approval Request"></div>
+        <div class="fld" style="grid-column:1/-1"><label>Message</label>
+          <textarea id="m-body" rows="4">Dear Manager,
+
+Please find attached my travel expense claim for your approval.
+
+Regards,</textarea></div>
+      </div>
+    </div>
+    <button class="btn btn-blu" onclick="sendEmail()">&#9993; Generate &amp; Open Email Client</button>
+    <p style="font-size:11px;color:var(--mut);margin-top:6px;text-align:center">Saves PDF to your device then opens your email client. Attach the saved PDF and send.</p>
+  </div>
+</div>
+
+</div><!-- .panels -->
+
+<!-- Spinner -->
+<div class="ovl" id="ovl"><div class="spin"></div><div class="spin-txt" id="spin-txt">Generating PDF...</div></div>
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Spinner -->
+<div class="ovl" id="ovl"><div class="spin"></div><div class="spin-txt" id="spin-txt">Generating PDF...</div></div>
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+var LOGO_B64 = 'data:image/png;base64,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';
+
+// ── Signature Upload ───────────────────────────────────────────────────────────
+var sigDataURL = null;
+
+function loadSig(e){
+  var file = e.target.files[0];
+  if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    sigDataURL = ev.target.result;
+    var preview = document.getElementById('sig-preview');
+    var img = document.getElementById('sig-img');
+    img.src = sigDataURL;
+    preview.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function gv(id){ var e=document.getElementById(id); return e?e.value:''; }
+function gc(id){ var e=document.getElementById(id); return e?e.checked:false; }
+function sv(v,fb){ return (v&&v.trim())?v.trim():(fb||''); }
+
+function fmtDate(iso){
+  if(!iso) return '';
+  var p=iso.split('-');
+  var m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return parseInt(p[2])+'-'+m[parseInt(p[1])-1]+'-'+p[0];
+}
+function fmtMonth(ym){
+  if(!ym) return '';
+  var p=ym.split('-');
+  var m=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  return m[parseInt(p[1])-1]+' '+p[0];
+}
+
+// ── DA Auto-Calc & Smart Expense Wizard ──────────────────────────────────────
+
+var hseSelectedDays = {};
+
+function getDaRate(){
+  if(gc('fd-upper'))  return {rate:0,    label:'As per Actual',        key:'upper'};
+  if(gc('fd-junior')) return {rate:1000, label:'Rs. 1,000 (fixed)',    key:'junior'};
+  if(gc('fd-middle')){
+    var dep=gv('t-dep'), ret=gv('t-ret');
+    var sameDay = (dep && ret && dep===ret);
+    var rate  = sameDay ? 2000 : 3000;
+    var label = sameDay ? 'Rs. 2,000 (same-day)' : 'Rs. 3,000 (overnight)';
+    return {rate:rate, label:label, key:sameDay?'sameday':'overnight'};
+  }
+  return null;
+}
+
+function getDays(){
+  var dep=gv('t-dep'), ret=gv('t-ret');
+  if(!dep||!ret) return 0;
+  var d1=new Date(dep), d2=new Date(ret);
+  if(isNaN(d1)||isNaN(d2)||d2<d1) return 0;
+  return Math.round((d2-d1)/864e5)+1;
+}
+
+function getDayRange(){
+  var dep=gv('t-dep'), ret=gv('t-ret');
+  if(!dep||!ret) return [];
+  var d1=new Date(dep), d2=new Date(ret), out=[];
+  for(var d=new Date(d1); d<=d2; d.setDate(d.getDate()+1))
+    out.push(d.toISOString().slice(0,10));
+  return out;
+}
+
+function fmtShort(iso){
+  var p=iso.split('-');
+  var m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return parseInt(p[2])+'-'+m[parseInt(p[1])-1];
+}
+
+function refreshWizard(){
+  var days=getDays(), food=getDaRate();
+  var banner=document.getElementById('da-banner');
+  var wbox=document.getElementById('wizard-box');
+  if(!days||!food){ banner.classList.remove('show'); wbox.classList.remove('show'); return; }
+  var dep=gv('t-dep');
+  var daAmt=food.key==='upper'?null:food.rate*days;
+  document.getElementById('da-days-label').textContent=days+' day'+(days>1?'s':'');
+  document.getElementById('da-rate-label').textContent=food.label;
+  document.getElementById('da-total-label').textContent=daAmt!==null?'PKR '+daAmt.toLocaleString('en-PK'):'As per Actual';
+  banner.classList.add('show');
+  buildWizard(days, food, dep);
+  wbox.classList.add('show');
+}
+
+function buildWizard(days, food, dep){
+  var dayRange=getDayRange();
+  var foodTotal=food.key==='upper'?null:food.rate*days;
+  var rcptTag='<div class="rcpt-needed">&#128206; Receipt required</div>';
+
+  function secHdr(t, first){
+    return '<div style="font-size:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--mut);padding:'+(first?'4px':'12px')+' 0 8px'+(first?'':';border-top:1px solid var(--bdr);margin-top:8px')+'">'+t+'</div>';
+  }
+
+  // ── Day-range grid shared by Food and HSE ──────────────────────────────────
+  // Food: every day is a chip (always-on toggle to deselect)
+  // HSE:  every day is a chip (off by default, tap to select)
+  var dayChipsFood = dayRange.map(function(d){
+    return '<div class="day-btn on" id="food-day-'+d+'" data-date="'+d+'" onclick="toggleFoodDay(\''+d+'\')">'+fmtShort(d)+'</div>';
+  }).join('');
+
+  var dayChipsHse = dayRange.map(function(d){
+    return '<div class="day-btn" id="hse-day-'+d+'" data-date="'+d+'" onclick="toggleHseDay(\''+d+'\')">'+fmtShort(d)+'</div>';
+  }).join('');
+
+  var html = secHdr('Travel Expenses', true);
+
+  // ── Food (auto, all days pre-selected) ────────────────────────────────────
+  html += '<div class="wiz-item active" id="wiz-food">'+
+    '<div class="wiz-header" onclick="toggleWiz(\'wiz-food\')">'+
+      '<div class="wiz-chk"></div>'+
+      '<div class="wiz-info">'+
+        '<div class="wiz-name">Food / Daily Allowance</div>'+
+        '<div class="wiz-sub">Tap a date to remove it &mdash; '+food.label+'/day</div>'+
+      '</div>'+
+      '<span class="wiz-amt" id="wiz-food-total">'+(foodTotal!==null?'PKR '+foodTotal.toLocaleString('en-PK'):'As per Actual')+'</span>'+
+    '</div>'+
+    '<div class="wiz-body">'+
+      (food.key==='upper'?'<div class="wiz-row" style="margin-bottom:8px"><label>Amount/day</label><input class="wiz-input" id="wiz-food-rate" type="number" min="0" placeholder="0" oninput="recalcFoodTotal()"></div>':'')+
+      '<div class="day-grid" id="food-day-grid">'+dayChipsFood+'</div>'+
+    '</div>'+
+  '</div>';
+
+  // Fuel items
+  function simpleItem(id, label, sub, rcpt){
+    return '<div class="wiz-item" id="'+id+'">'+
+      '<div class="wiz-header" onclick="toggleWiz(\''+id+'\')">'+
+        '<div class="wiz-chk"></div>'+
+        '<div class="wiz-info"><div class="wiz-name">'+label+'</div><div class="wiz-sub">'+sub+'</div>'+(rcpt?rcptTag:'')+
+        '</div>'+
+      '</div>'+
+      '<div class="wiz-body">'+
+        '<div class="wiz-row"><label>Date</label><input class="wiz-date" id="'+id+'-date" type="date" value="'+dep+'"></div>'+
+        '<div class="wiz-row"><label>Amount</label><input class="wiz-input" id="'+id+'-amt" type="number" min="0" placeholder="0"></div>'+
+      '</div>'+
+    '</div>';
+  }
+
+  if(gc('fl-local'))   html+=simpleItem('wiz-fl-local',  'Local Commute (Careem/Uber)', 'Enter total fare', true);
+  if(gc('fl-vehicle')) html+=simpleItem('wiz-fl-vehicle','Own Vehicle Fuel', 'Rs. 15/km &mdash; enter total amount', false);
+  if(gc('fl-airfare')) html+=simpleItem('wiz-fl-air',    'Airfare / Bus / Train Fare', 'Enter ticket amount', true);
+  if(gc('ac-company')) html+=simpleItem('wiz-ac-co',     'Accommodation (Company)', 'Bill to company', true);
+  if(gc('ac-private')) html+=simpleItem('wiz-ac-prv',    'Accommodation (Private)', '50% advance', true);
+
+  // ── Site section ────────────────────────────────────────────────────────────
+  html += secHdr('Site / Project Expenses', false);
+
+  // HSE Resource — day picker, Rs.3000/day
+  html += '<div class="wiz-item" id="wiz-hse">'+
+    '<div class="wiz-header" onclick="toggleWiz(\'wiz-hse\')">'+
+      '<div class="wiz-chk"></div>'+
+      '<div class="wiz-info">'+
+        '<div class="wiz-name">On-Site Daily Resource</div>'+
+        '<div class="wiz-sub">Rs. 3,000/day &mdash; tap the days, then enter description</div>'+
+        rcptTag+
+      '</div>'+
+      '<span class="wiz-amt" id="wiz-hse-total">PKR 0</span>'+
+    '</div>'+
+    '<div class="wiz-body">'+
+      '<div style="font-size:11px;color:var(--mut);margin-bottom:6px">Tap days resource was on site:</div>'+
+      '<div class="day-grid" id="hse-day-grid">'+dayChipsHse+'</div>'+
+      '<div class="wiz-row" style="margin-top:8px"><label>Description</label><input style="flex:1;background:var(--bg);border:1px solid var(--bdr);border-radius:6px;color:var(--txt);font-family:inherit;font-size:13px;padding:5px 8px;outline:none;" id="wiz-hse-desc" type="text" placeholder="e.g. 3rd Party HSE Resource"></div>'+
+      '<div class="wiz-row"><label>Rate/day</label><input class="wiz-input" id="wiz-hse-rate" type="number" min="0" value="3000" style="width:110px"></div>'+
+    '</div>'+
+  '</div>';
+
+  // Rent — date + amount
+  function dateAmtItem(id, label, sub){
+    return '<div class="wiz-item" id="'+id+'">'+
+      '<div class="wiz-header" onclick="toggleWiz(\''+id+'\')">'+
+        '<div class="wiz-chk"></div>'+
+        '<div class="wiz-info"><div class="wiz-name">'+label+'</div><div class="wiz-sub">'+sub+'</div>'+rcptTag+'</div>'+
+      '</div>'+
+      '<div class="wiz-body">'+
+        '<div class="wiz-row"><label>Date</label><input class="wiz-date" id="'+id+'-date" type="date" value="'+dep+'"></div>'+
+        '<div class="wiz-row"><label>Amount</label><input class="wiz-input" id="'+id+'-amt" type="number" min="0" placeholder="0"></div>'+
+      '</div>'+
+    '</div>';
+  }
+
+  html+=dateAmtItem('wiz-rent',     'Site Rent / Venue',          'Office, shed or space hired on site');
+  html+=dateAmtItem('wiz-printing', 'Printing &amp; Stationery',  'Drawings, reports, forms, binding');
+  html+=dateAmtItem('wiz-services', 'On-Site Services / Labour',  'Third-party labour, helper, crane');
+  html+=simpleItem('wiz-tools',   'Tools &amp; Consumables',  'Bits, cable ties, tape, small hardware', true);
+  html+=simpleItem('wiz-telecom', 'Communication / Internet',  'SIM recharge, hotspot, calls on site', false);
+  html+=simpleItem('wiz-freight', 'Freight / Courier',          'Material delivery, documents dispatched', true);
+  html+=simpleItem('wiz-misc',    'Other / Miscellaneous',      'Any other expense', true);
+
+  document.getElementById('wiz-items').innerHTML = html;
+
+  // init state
+  hseSelectedDays = {};
+  // food: all days on by default
+  foodSelectedDays = {};
+  dayRange.forEach(function(d){ foodSelectedDays[d]=true; });
+}
+
+// ── Food day toggle (deselect to skip a day) ──────────────────────────────────
+var foodSelectedDays = {};
+
+function toggleFoodDay(date){
+  var btn=document.getElementById('food-day-'+date);
+  if(!btn) return;
+  if(foodSelectedDays[date]){
+    delete foodSelectedDays[date];
+    btn.classList.remove('on');
+  } else {
+    foodSelectedDays[date]=true;
+    btn.classList.add('on');
+  }
+  recalcFoodTotal();
+}
+
+function recalcFoodTotal(){
+  var food=getDaRate();
+  if(!food||food.key==='upper'){
+    var rateEl=document.getElementById('wiz-food-rate');
+    var rate=rateEl?parseFloat(rateEl.value)||0:0;
+    var cnt=Object.keys(foodSelectedDays).length;
+    var t=document.getElementById('wiz-food-total');
+    if(t) t.textContent=rate>0?'PKR '+(rate*cnt).toLocaleString('en-PK'):'As per Actual';
+  } else {
+    var cnt=Object.keys(foodSelectedDays).length;
+    var t=document.getElementById('wiz-food-total');
+    if(t) t.textContent='PKR '+(food.rate*cnt).toLocaleString('en-PK');
+  }
+}
+
+// ── HSE day toggle ──────────────────────────────────────────────────────────
+function toggleHseDay(date){
+  var btn=document.getElementById('hse-day-'+date);
+  if(!btn) return;
+  if(hseSelectedDays[date]){
+    delete hseSelectedDays[date];
+    btn.classList.remove('on');
+  } else {
+    hseSelectedDays[date]=true;
+    btn.classList.add('on');
+  }
+  var cnt=Object.keys(hseSelectedDays).length;
+  var rate=parseFloat((document.getElementById('wiz-hse-rate')||{value:3000}).value)||3000;
+  var t=document.getElementById('wiz-hse-total');
+  if(t) t.textContent='PKR '+(cnt*rate).toLocaleString('en-PK');
+}
+
+function toggleWiz(id){
+  var el=document.getElementById(id);
+  if(el) el.classList.toggle('active');
+}
+
+// ── Apply: build rows sorted by date, same date keeps insertion order ────────
+function applyWizard(){
+  var food=getDaRate();
+  var dep=gv('t-dep');
+  var dayRange=getDayRange();
+
+  // rows = [{date, detail, amt}]
+  var rows=[];
+
+  // Food: one row per selected day
+  if(document.getElementById('wiz-food') && document.getElementById('wiz-food').classList.contains('active')){
+    var rate=food.key==='upper'
+      ? parseFloat((document.getElementById('wiz-food-rate')||{value:0}).value)||0
+      : food.rate;
+    // keep original day order
+    dayRange.forEach(function(d){
+      if(foodSelectedDays[d]) rows.push({date:d, detail:'Food', amt:rate, sortKey:d+'_2'});
+    });
+  }
+
+  // HSE: one row per selected day
+  if(document.getElementById('wiz-hse') && document.getElementById('wiz-hse').classList.contains('active')){
+    var hseDesc=(document.getElementById('wiz-hse-desc')||{value:''}).value.trim()||'On-Site Daily Resource';
+    var hseRate=parseFloat((document.getElementById('wiz-hse-rate')||{value:3000}).value)||3000;
+    var hseDays=Object.keys(hseSelectedDays).sort();
+    hseDays.forEach(function(d){
+      rows.push({date:d, detail:hseDesc, amt:hseRate, sortKey:d+'_1'});
+    });
+  }
+
+  // Rent
+  if(document.getElementById('wiz-rent') && document.getElementById('wiz-rent').classList.contains('active')){
+    var d=(document.getElementById('wiz-rent-date')||{value:dep}).value||dep;
+    var a=parseFloat((document.getElementById('wiz-rent-amt')||{value:0}).value)||0;
+    if(a>0) rows.push({date:d, detail:'Rent', amt:a, sortKey:d+'_0'});
+  }
+
+  // Printing
+  if(document.getElementById('wiz-printing') && document.getElementById('wiz-printing').classList.contains('active')){
+    var d=(document.getElementById('wiz-printing-date')||{value:dep}).value||dep;
+    var a=parseFloat((document.getElementById('wiz-printing-amt')||{value:0}).value)||0;
+    if(a>0) rows.push({date:d, detail:'Printing & Stationery', amt:a, sortKey:d+'_3'});
+  }
+
+  // Services
+  if(document.getElementById('wiz-services') && document.getElementById('wiz-services').classList.contains('active')){
+    var d=(document.getElementById('wiz-services-date')||{value:dep}).value||dep;
+    var a=parseFloat((document.getElementById('wiz-services-amt')||{value:0}).value)||0;
+    if(a>0) rows.push({date:d, detail:'On-Site Services / Labour', amt:a, sortKey:d+'_3'});
+  }
+
+  // Simple items (tools, telecom, freight, misc, fuel, accom)
+  var simpleMap=[
+    {id:'wiz-tools',      detail:'Tools & Consumables'},
+    {id:'wiz-telecom',    detail:'Communication / Internet'},
+    {id:'wiz-freight',    detail:'Freight / Courier'},
+    {id:'wiz-misc',       detail:'Miscellaneous'},
+    {id:'wiz-fl-local',   detail:'Local Commute (Careem/Uber)'},
+    {id:'wiz-fl-vehicle', detail:'Own Vehicle Fuel'},
+    {id:'wiz-fl-air',     detail:'Airfare / Bus / Train Fare'},
+    {id:'wiz-ac-co',      detail:'Accommodation (Company)'},
+    {id:'wiz-ac-prv',     detail:'Accommodation (Private)'}
+  ];
+  simpleMap.forEach(function(s){
+    var el=document.getElementById(s.id);
+    if(!el||!el.classList.contains('active')) return;
+    var d=(document.getElementById(s.id+'-date')||{value:dep}).value||dep;
+    var a=parseFloat((document.getElementById(s.id+'-amt')||{value:0}).value)||0;
+    if(a>0) rows.push({date:d, detail:s.detail, amt:a, sortKey:d+'_3'});
+  });
+
+  if(!rows.length){ toast('Tick at least one expense item','err'); return; }
+
+  // Sort by date then by within-day priority (Rent _0, HSE _1, Food _2, rest _3)
+  rows.sort(function(a,b){ return a.sortKey<b.sortKey?-1:a.sortKey>b.sortKey?1:0; });
+
+  // Clear and fill expense table
+  var tbody=document.getElementById('exp-tbody');
+  var trs=tbody?tbody.querySelectorAll('tr'):[];
+  trs.forEach(function(tr){
+    tr.querySelector('.ed').value='';
+    tr.querySelector('.ex').value='';
+    tr.querySelector('.ea').value='';
+  });
+
+  rows.forEach(function(row,ri){
+    if(ri>=trs.length){ toast('Too many rows \u2014 expand table or split claim','err'); return; }
+    trs[ri].querySelector('.ed').value=row.date;
+    trs[ri].querySelector('.ex').value=row.detail;
+    trs[ri].querySelector('.ea').value=row.amt>0?row.amt:'';
+  });
+
+  if(dep) document.getElementById('e-month').value=dep.slice(0,7);
+  recalc();
+  toast(rows.length+' rows filled \u2014 check Expense Claim tab \u2713','ok');
+
+  // Receipt reminders
+  var needRcpt=[];
+  ['wiz-hse','wiz-rent','wiz-printing','wiz-services','wiz-tools','wiz-freight','wiz-misc','wiz-fl-local','wiz-fl-air','wiz-ac-co','wiz-ac-prv'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el&&el.classList.contains('active')) needRcpt.push(el.querySelector('.wiz-name').textContent);
+  });
+  if(needRcpt.length) setTimeout(function(){ toast('Attach receipts for: '+needRcpt.join(', '),'err'); },2000);
+}
+
+// Hook date & food changes to refresh wizard
+function hookWizard(){
+  ['t-dep','t-ret'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.addEventListener('change', refreshWizard);
+  });
+  ['fd-upper','fd-middle','fd-junior','fl-local','fl-vehicle','fl-airfare','ac-company','ac-private'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.addEventListener('change', refreshWizard);
+  });
+}
+
+
+
+
+window.addEventListener('DOMContentLoaded', function(){
+  var today = new Date().toISOString().slice(0,10);
+  document.getElementById('t-date').value  = today;
+  document.getElementById('t-dep').value   = today;
+  document.getElementById('t-ret').value   = today;
+  document.getElementById('e-month').value = today.slice(0,7);
+  buildTable();
+  hookWizard();
+  setupPWA();
+});
+
+// ── Expense table ─────────────────────────────────────────────────────────────
+var rcptURLs = [];
+var rcptFiles = [];
+
+function buildTable(){
+  var tb = document.getElementById('exp-tbody');
+  if (!tb) return;
+  tb.innerHTML = '';
+  for(var i=0;i<20;i++){
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="rn">'+(i+1)+'</td>'+
+      '<td><input type="date" class="ed"></td>'+
+      '<td><input type="text" class="ex" placeholder="Description"></td>'+
+      '<td><input type="number" class="ea" placeholder="0" min="0" step="0.01" style="text-align:right" oninput="recalc()"></td>';
+    tb.appendChild(tr);
+  }
+}
+
+function recalc(){
+  var t=0;
+  document.querySelectorAll('.ea').forEach(function(i){t+=parseFloat(i.value)||0;});
+  var s='PKR '+t.toLocaleString('en-PK',{minimumFractionDigits:2,maximumFractionDigits:2});
+  var e1=document.getElementById('e-total'); if(e1) e1.textContent=s;
+  var e2=document.getElementById('t-adv-display'); if(e2) e2.textContent=s;
+}
+
+// ── Receipts ─────────────────────────────────────────────────────────────────
+function handleReceipts(evt){
+  Array.from(evt.target.files).forEach(function(file){
+    if(rcptFiles.find(function(f){return f.name===file.name;})) return;
+    rcptFiles.push(file);
+    var r=new FileReader();
+    r.onload=function(e){rcptURLs.push({name:file.name,url:e.target.result});renderRcptList();};
+    r.readAsDataURL(file);
+  });
+  evt.target.value='';
+}
+function removeRcpt(i){ rcptFiles.splice(i,1); rcptURLs.splice(i,1); renderRcptList(); }
+function renderRcptList(){
+  var el=document.getElementById('rcpt-list');
+  if(!el) return;
+  if(!rcptURLs.length){el.innerHTML='<div class="rcpt-empty">No receipts added yet</div>';return;}
+  el.innerHTML=rcptURLs.map(function(r,i){
+    return '<div class="rcpt-item">&#129534; <span class="rcpt-name">'+r.name+'</span>'+
+           '<button class="rcpt-del" onclick="removeRcpt('+i+')">&#10005;</button></div>';
+  }).join('');
+}
+
+// ── Collect data ──────────────────────────────────────────────────────────────
+function collectP1(){
+  var t=0;
+  document.querySelectorAll('.ea').forEach(function(i){t+=parseFloat(i.value)||0;});
+  return {
+    date:fmtDate(gv('t-date')), name:gv('t-name'), desig:gv('t-desig'),
+    dept:sv(gv('t-dept'),'C&I Operations'), region:sv(gv('t-region'),'Central'),
+    dep:fmtDate(gv('t-dep')), ret:fmtDate(gv('t-ret')),
+    dest:gv('t-dest'), mode:gv('t-mode'), purpose:gv('t-purpose'),
+    fl_local:gc('fl-local'), fl_vehicle:gc('fl-vehicle'), fl_airfare:gc('fl-airfare'),
+    ac_company:gc('ac-company'), ac_private:gc('ac-private'),
+    fd_upper:gc('fd-upper'), fd_middle:gc('fd-middle'), fd_junior:gc('fd-junior'),
+    adv_status:(document.querySelector('input[name="adv"]:checked')||{value:''}).value,
+    total_adv:t>0?t.toLocaleString('en-PK',{minimumFractionDigits:2}):''
+  };
+}
+
+function collectP2(){
+  var so=gv('e-so'),cu=gv('e-cust'),st=gv('e-st'),cc=sv(gv('e-cc'),'C&I');
+  var rows=[];
+  document.querySelectorAll('#exp-tbody tr').forEach(function(tr){
+    var d=tr.querySelector('.ed').value;
+    var x=tr.querySelector('.ex').value;
+    var a=tr.querySelector('.ea').value;
+    if(d||x||a) rows.push({
+      date:fmtDate(d),so:so,detail:x,cust:cu,stype:st,cc:cc,
+      amt:a?parseFloat(a).toLocaleString('en-PK',{minimumFractionDigits:2}):''
+    });
+  });
+  return{
+    month:fmtMonth(gv('e-month')), etype:gv('e-type'),
+    reason:gv('e-reason'), cc:cc,
+    emp:sv(gv('e-emp'),'Mateen Arif'),
+    mgr:sv(gv('e-mgr'),'Mr. Ghazanfal Ali'),
+    rd:sv(gv('e-rd'),'Hussain Khan'),
+    rows:rows
+  };
+}
+
+// ── PDF ───────────────────────────────────────────────────────────────────────
+function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
+function showOvl(m){var e=document.getElementById('ovl');if(e)e.classList.add('show');var t=document.getElementById('spin-txt');if(t)t.textContent=m||'Working...';}
+function hideOvl(){var e=document.getElementById('ovl');if(e)e.classList.remove('show');}
+function toast(msg,cls){
+  var t=document.getElementById('toast');
+  if(!t) return;
+  t.textContent=msg; t.className='toast '+(cls||''); t.classList.add('show');
+  setTimeout(function(){t.classList.remove('show');},3500);
+}
+
+async function generatePDF(returnBlob){
+  showOvl('Building PDF...');
+  await sleep(80);
+  try{
+    var jsPDFCls = window.jspdf && window.jspdf.jsPDF;
+    if(!jsPDFCls) throw new Error('jsPDF not loaded — check internet and reload');
+    var doc = new jsPDFCls({unit:'mm',format:'a4'});
+    drawPage1(doc, collectP1());
+    doc.addPage();
+    drawPage2(doc, collectP2());
+    if(rcptURLs.length){ doc.addPage(); await drawRcptPage(doc,rcptURLs); }
+    hideOvl();
+    if(returnBlob) return doc.output('blob');
+    doc.save('SkyElectric_Expense_Claim.pdf');
+    toast('PDF downloaded!','ok');
+  } catch(e){
+    hideOvl();
+    toast('Error: '+(e.message||String(e)),'err');
+    console.error(e);
+    if(returnBlob) return null;
+  }
+}
+
+async function sendEmail(){
+  var mgr=gv('m-email');
+  if(!mgr){toast('Enter manager email','err');return;}
+  showOvl('Building PDF...');
+  await sleep(80);
+  var blob = await generatePDF(true);
+  hideOvl();
+  if(!blob) return;
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url; a.download='SkyElectric_Expense_Claim.pdf'; a.click();
+  URL.revokeObjectURL(url);
+  await sleep(600);
+  var p=new URLSearchParams({subject:gv('m-subj'),body:gv('m-body')});
+  var cc=gv('cc-email'); if(cc) p.set('cc',cc);
+  window.location.href='mailto:'+mgr+'?'+p.toString();
+  toast('PDF saved — attach it to the email','ok');
+}
+
+// ── PWA ───────────────────────────────────────────────────────────────────────
+var _deferredPrompt=null;
+function setupPWA(){
+  window.addEventListener('beforeinstallprompt',function(e){
+    e.preventDefault(); _deferredPrompt=e;
+    var b=document.getElementById('install-banner');
+    if(b) b.classList.add('show');
+  });
+}
+function doInstall(){
+  if(!_deferredPrompt) return;
+  _deferredPrompt.prompt();
+  _deferredPrompt.userChoice.then(function(){
+    _deferredPrompt=null;
+    var b=document.getElementById('install-banner');
+    if(b) b.classList.remove('show');
+  });
+}
+
+// ── PDF draw functions ────────────────────────────────────────────────────────
+function ck(doc,x,y,checked,sz){ sz=sz||3.5; doc.setLineWidth(0.4); doc.rect(x,y,sz,sz); if(checked){doc.setLineWidth(0.8);doc.line(x+0.5,y+sz*0.55,x+sz*0.38,y+sz-0.4);doc.line(x+sz*0.38,y+sz-0.4,x+sz-0.4,y+0.4);} }
+
+// ══ PAGE 1 — Travel Request Form ═════════════════════════════════════════════
+// jsPDF coordinate system: (0,0) = top-left, Y increases downward
+function drawPage1(doc, d) {
+  var W=210, m=18, rm=192, mid=106;
+  var y=10;
+
+  // ── Logo: top-right corner, above content ──
+  // Place at x=170, y=6, size 22x22 — clear of all text
+  doc.addImage(LOGO_B64, 'PNG', 176, 6, 12, 12);
+
+  // ANNEXE 6
+  doc.setFont('helvetica','bold'); doc.setFontSize(10);
+  doc.text('ANNEXE 6:', m, 32);
+
+  // Title centred + underlined
+  y = 40;
+  doc.setFontSize(13);
+  var title = 'TRAVEL REQUEST FORM \u2013 DOMESTIC';
+  var tw = doc.getTextWidth(title);
+  var tx = (W - tw) / 2 - 6;
+  doc.text(title, tx, y);
+  doc.setLineWidth(0.4);
+  doc.line(tx, y+1, tx+tw, y+1);
+  doc.setFontSize(12);
+  doc.text('(4.2)', W-42, y);
+
+  // Date
+  y = 49;
+  doc.setFont('helvetica','normal'); doc.setFontSize(9);
+  doc.text('Date:', W-66, y);
+  doc.setLineWidth(0.3);
+  doc.line(W-58, y+1, rm, y+1);
+  if (d.date) doc.text((d.date||''), W-57, y);
+
+  // TRAVEL INFORMATION
+  y = 58;
+  doc.setFont('helvetica','bold'); doc.setFontSize(9);
+  doc.text('TRAVEL INFORMATION:', m, y);
+  doc.setLineWidth(0.6);
+  doc.line(m, y+1.5, m+54, y+1.5);
+
+  var rows = [
+    ['Department:', (d.dept||''),      'Region:',        (d.region||'')],
+    ['Employee Name:', (d.name||''),   'Designation:',   (d.desig||'')],
+    ['Departure Date:', (d.dep||''),   'Return Date:',   (d.ret||'')],
+    ['Destination:', (d.dest||''),     'Mode of Travel:', (d.mode||'')],
+  ];
+  y += 8;
+  doc.setLineWidth(0.3);
+  rows.forEach(function(p) {
+    doc.setFont('helvetica','normal'); doc.setFontSize(9);
+    doc.text(p[0], m, y);
+    var lw1 = doc.getTextWidth(p[0]);
+    doc.line(m+lw1+1, y+1, mid-3, y+1);
+    if (p[1]) doc.text(p[1], m+lw1+2, y);
+    doc.text(p[2], mid, y);
+    var lw2 = doc.getTextWidth(p[2]);
+    doc.line(mid+lw2+1, y+1, rm, y+1);
+    if (p[3]) doc.text(p[3], mid+lw2+2, y);
+    y += 8;
+  });
+
+  // Purpose of Travel
+  doc.setFont('helvetica','normal'); doc.setFontSize(9);
+  doc.text('Purpose of Travel:', m, y);
+  var pw = doc.getTextWidth('Purpose of Travel:');
+  doc.line(m+pw+1, y+1, rm, y+1);
+  if (d.purpose) doc.text((d.purpose||''), m+pw+2, y);
+  y += 7;
+
+  // Horizontal rule
+  doc.setLineWidth(0.6);
+  doc.line(m, y, rm, y);
+  y += 7;
+
+  // TRAVEL ADVANCE note
+  doc.setFont('helvetica','bold'); doc.setFontSize(9);
+  doc.text('TRAVEL ADVANCE:', m, y);
+  var nw = doc.getTextWidth('TRAVEL ADVANCE: ');
+  doc.setFont('helvetica','normal'); doc.setFontSize(9);
+  var note = 'Advance will be issued for domestic travel on request. The advance, if required, will be approved by the Approving Authority, which will cover Fuel, Accommodation and Food.';
+  var noteLines = doc.splitTextToSize(note, rm - m - nw - 2); if (!noteLines || !noteLines.length) noteLines = [note];
+  doc.text((noteLines[0]||''), m+nw, y);
+  if (noteLines.length > 1) { y += 5; doc.text(noteLines.slice(1).join(' '), m, y); }
+  y += 8;
+
+  // ── Checkbox table: FUEL | ACCOMMODATION | FOOD ──
+  var tl=m, tr2=rm;
+  var fr = tl+58;   // fuel right / accom left
+  var ar = fr+66;   // accom right / food left
+  var tableTop = y;
+
+  // Header row
+  var hh = 8;
+  doc.setLineWidth(0.6);
+  doc.rect(tl, tableTop, tr2-tl, hh);
+  doc.line(fr, tableTop, fr, tableTop+hh);
+  doc.line(ar, tableTop, ar, tableTop+hh);
+  doc.setFont('helvetica','bold'); doc.setFontSize(9);
+  function ctr(x1,x2,label){ var w=doc.getTextWidth(label); doc.text(label, x1+(x2-x1-w)/2, tableTop+5.5); }
+  ctr(tl, fr, 'FUEL'); ctr(fr, ar, 'ACCOMODATION'); ctr(ar, tr2, 'FOOD');
+
+  // Content rows
+  var rowH = [22, 13, 17];
+  var ftx = [
+    'Local commute bills (Careem /\nUBER original bills required)',
+    'Own Vehicle (Rs. 15 / km)',
+    '(Airfare / Bus fare/ Train fare)'
+  ];
+  var atx = [
+    'Bill To Company\n(Admin arranges, no advance)\nUpper: Rs. 18,000\nMiddle: Rs. 12,000\nJunior: Rs. 8,000',
+    '',
+    'Private Guest Arrangement\n(50% of entitlement in advance)'
+  ];
+  var fftx = [
+    'Upper Level Management:\nAs per Actual',
+    'Middle Level Management:\nRs. 3,000/day (overnight)\nRs. 2,000/day (same-day)',
+    'Junior Level Management:\nRs. 1,000/day (fixed)'
+  ];
+  var fck=[d.fl_local,d.fl_vehicle,d.fl_airfare];
+  var ack=[d.ac_company,false,d.ac_private];
+  var dck=[d.fd_upper,d.fd_middle,d.fd_junior];
+
+  var ry = tableTop + hh;
+  rowH.forEach(function(rh, ri) {
+    var rb = ry + rh;
+    doc.setLineWidth(0.4);
+    doc.line(tl, rb, tr2, rb);
+    doc.line(fr, ry, fr, rb);
+    doc.line(ar, ry, ar, rb);
+
+    // Fuel: checkbox + text centred vertically
+    var fLines = ftx[ri].split('\n');
+    var fBlockH = fLines.length * 3.5;
+    var fty = ry + (rh - fBlockH) / 2 + 2;
+    ck(doc, tl+1.5, ry + rh/2 - 3, fck[ri]);
+    doc.setFont('helvetica','normal'); doc.setFontSize(7);
+    fLines.forEach(function(ln,li){ doc.text(ln, tl+6.5, fty + li*3.5); });
+
+    // Accommodation
+    if (ri===0||ri===2) {
+      var aLines = atx[ri===0?0:2].split('\n');
+      var aBlockH = aLines.length * 3.3;
+      var aty = ry + (rh - aBlockH) / 2 + 2;
+      ck(doc, fr+1.5, ry + rh/2 - 3, ack[ri===0?0:2]);
+      doc.setFont('helvetica','normal'); doc.setFontSize(6.5);
+      aLines.forEach(function(ln,li){ doc.text(ln, fr+6.5, aty + li*3.3); });
+    }
+
+    // Food: checkbox + text centred vertically
+    var dLines = fftx[ri].split('\n');
+    var dBlockH = dLines.length * 3.5;
+    var dty = ry + (rh - dBlockH) / 2 + 2;
+    ck(doc, ar+1.5, ry + rh/2 - 3, dck[ri]);
+    doc.setFont('helvetica','normal'); doc.setFontSize(7);
+    dLines.forEach(function(ln,li){ doc.text(ln, ar+6.5, dty + li*3.5); });
+
+    ry = rb;
+  });
+
+  // Left/right outer borders
+  doc.setLineWidth(0.6);
+  doc.line(tl, tableTop+hh, tl, ry);
+  doc.line(tr2, tableTop+hh, tr2, ry);
+  y = ry + 8;
+
+  // Total Advance
+  doc.setFont('helvetica','bold'); doc.setFontSize(9);
+  doc.text('Total Advance Amount Required = ', W-106, y);
+  doc.setLineWidth(0.3);
+  doc.line(W-38, y+1, rm, y+1);
+  if (d.total_adv) doc.text((d.total_adv||''), W-37, y);
+  y += 12;
+
+  // APPROVALS
+  doc.setFont('helvetica','bold'); doc.setFontSize(9);
+  doc.text('APPROVALS:', m, y);
+  y += 18;
+
+  // Three signature lines
+  var sigLabels = ["Traveler's Signature", "HoD's Signature", "CFO's Signature"];
+  var sigXs = [m, m+58, m+116];
+  doc.setLineWidth(0.3);
+  sigXs.forEach(function(sx, si) {
+    doc.line(sx, y, sx+48, y);
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
+    var sw = doc.getTextWidth(sigLabels[si]);
+    doc.text(sigLabels[si], sx+(48-sw)/2, y+4);
+  });
+  // Embed traveler digital signature if saved
+  if(sigDataURL){
+    doc.addImage(sigDataURL,'PNG', m, y-14, 48, 13);
+  }
+  y += 16;
+
+  // Verified By Internal Auditor
+  doc.setLineWidth(0.3);
+  doc.line(m, y, m+48, y);
+  doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
+  doc.text('Verified By Internal Auditor', m, y+4);
+
+  // Advance Paid box (same row)
+  var bx=m+55, by=y-2, bw=103, bh=14;
+  doc.setLineWidth(0.5); doc.rect(bx, by, bw, bh);
+  ck(doc, bx+2, by+4, d.adv_status==='paid', 3.5);
+  doc.setFontSize(8); doc.text('ADVANCE PAID', bx+7, by+8.5);
+  ck(doc, bx+52, by+4, d.adv_status==='not_paid', 3.5);
+  doc.text('ADVANCE NOT PAID', bx+57, by+8.5);
+  doc.setFontSize(7.5); doc.text('Manager Finance Signature:', bx+2, by+12.5);
+  y += 22;
+
+  // Notes — draw downward, footer always below last note
+  doc.setFont('helvetica','normal'); doc.setFontSize(8);
+  doc.text('Note:', m, y);
+  var notes = [
+    'The Traveler is responsible for submitting this signed form to the Finance Dept.',
+    'Travel Advance taken shall be required to be settled within 15 days after the return date.',
+    'Employee shall keep copy of the approved Travel Request form.',
+    'You must attach your travel plan along with this form and submit your travel report upon your return.'
+  ];
+  var ny = y + 6;
+  notes.forEach(function(n) { doc.text('\u2022  '+n, m+3, ny); ny += 6; });
+
+  // Footer placed 4mm below last note
+  var yf = ny + 4;
+  doc.setFontSize(8);
+  doc.text('67 | P a g e', m, yf);
+  doc.setFont('helvetica','italic'); doc.setFontSize(7.5);
+  doc.text('This manual is highly confidential', W/2+10, yf+5, {align:'center'});
+  doc.text('& is used for internal communication only', W/2+10, yf+10, {align:'center'});
+}
+
+function drawPage2(doc, d) {
+  var W=210, m=18, rm=192, tw=174;
+  var y=10;
+
+  // ── Logo top-right: small, "SkyElectric" once underneath ──
+  doc.addImage(LOGO_B64, 'PNG', 190, 4, 8, 8);
+  doc.setFont('helvetica','bold'); doc.setFontSize(6);
+  doc.text('SkyElectric', 194, 14, {align:'center'});
+
+  // Header block starts at y=26 (below logo)
+  y = 26;
+  var sx = m + 95; // split between left label block and right MONTH/TYPE/CC block
+
+  // Row 1: LOCAL EXPENSE CLAIM | MONTH ___
+  var r1h = 8;
+  doc.setLineWidth(0.5); doc.rect(m, y, tw, r1h); doc.line(sx, y, sx, y+r1h);
+  doc.setFont('helvetica','bold'); doc.setFontSize(10);
+  doc.text('LOCAL EXPENSE CLAIM', m+2, y+5.5);
+  var lecW = doc.getTextWidth('LOCAL EXPENSE CLAIM');
+  doc.setLineWidth(0.3); doc.rect(m+1, y+0.8, lecW+2, r1h-1.5);
+  doc.setFont('helvetica','normal'); doc.setFontSize(8);
+  doc.text('MONTH', sx+2, y+5.5);
+  var mlw = doc.getTextWidth('MONTH');
+  doc.line(sx+mlw+4, y+6, rm-2, y+6);
+  if (d.month) doc.text((d.month||''), sx+mlw+5, y+5.5);
+  y += r1h;
+
+  // Row 2: ALL RECEIPTS... | TYPE ___
+  var r2h = 7;
+  doc.setLineWidth(0.5); doc.rect(m, y, tw, r2h); doc.line(sx, y, sx, y+r2h);
+  doc.setFont('helvetica','bold'); doc.setFontSize(8);
+  doc.text('ALL RECEIPTS TO BE ATTACHED IN ORDER.', m+2, y+4.5);
+  doc.setFont('helvetica','normal'); doc.setFontSize(8);
+  doc.text('TYPE', sx+2, y+4.5);
+  var tlw = doc.getTextWidth('TYPE');
+  doc.line(sx+tlw+4, y+5, rm-2, y+5);
+  if (d.etype) doc.text((d.etype||''), sx+tlw+5, y+4.5);
+  y += r2h;
+
+  // Row 3: REASON ___ | COST CENTRE ___
+  var r3h = 7;
+  doc.setLineWidth(0.5); doc.rect(m, y, tw, r3h); doc.line(sx, y, sx, y+r3h);
+  doc.setFont('helvetica','bold'); doc.setFontSize(8);
+  doc.text('REASON :', m+2, y+4.5);
+  var rlw = doc.getTextWidth('REASON :');
+  doc.setFont('helvetica','normal');
+  if (d.reason) doc.text((d.reason||''), m+rlw+4, y+4.5);
+  doc.text('COST CENTRE', sx+2, y+4.5);
+  var cclw = doc.getTextWidth('COST CENTRE');
+  doc.line(sx+cclw+4, y+5, rm-2, y+5);
+  if (d.cc) doc.text((d.cc||''), sx+cclw+5, y+4.5);
+  y += r3h;
+
+  // ── Expense table ──
+  // Columns: Rec.No(11) | Date(20) | Sale Order(20) | Expense Details(50) | Customer Name(30) | Sale Type(12) | Cost Centre(12) | Total PKR(rest~19)
+  // Total fixed = 11+22+22+36+38+15+15 = 159 → remaining = 174-159 = 15 for Total PKR
+  var colW = [11, 20, 20, 50, 30, 12, 12, 0];
+  colW[7] = tw - colW.slice(0,7).reduce(function(a,b){return a+b;}, 0);
+  var cxs = [m];
+  colW.forEach(function(c){ cxs.push(cxs[cxs.length-1]+c); });
+  var nc = cxs.length - 1;
+
+  // Table header
+  var hh = 10;
+  doc.setLineWidth(0.5); doc.rect(m, y, tw, hh);
+  for (var i=1; i<nc; i++) doc.line(cxs[i], y, cxs[i], y+hh);
+
+  var hdrs = ['Rec.\nNo.','Date','Sale Order\nNumber','Expense Details',
+              'Customer Name','Sale\nType','Cost\nCentre','Total\nPKR'];
+  hdrs.forEach(function(h,i) {
+    var cx = (cxs[i]+cxs[i+1])/2;
+    // Use smaller font for narrower columns
+    var sz = (colW[i] < 18) ? 5.5 : 7;
+    doc.setFont('helvetica','bold'); doc.setFontSize(sz);
+    var ls = h.split('\n');
+    if (ls.length===2) {
+      doc.text(ls[0], cx, y+3.5, {align:'center'});
+      doc.text(ls[1], cx, y+7.5, {align:'center'});
+    } else {
+      doc.text(h, cx, y+6,   {align:'center'});
+    }
+  });
+  y += hh;
+
+  // Data rows
+  var drh = 6.5;
+  var rows = d.rows || [];
+  var total = 0;
+  var dataTop = y;
+
+  for (var ri=0; ri<20; ri++) {
+    doc.setLineWidth(0.3);
+    doc.line(m, y+drh, rm, y+drh);
+    for (var ii=1; ii<nc; ii++) doc.line(cxs[ii], y, cxs[ii], y+drh);
+
+    doc.setFont('helvetica','normal'); doc.setFontSize(7);
+    doc.text(String(ri+1), (cxs[0]+cxs[1])/2, y+4.5, {align:'center'});
+
+    if (ri < rows.length) {
+      var row = rows[ri];
+      var vals = [(row.date||''), (row.so||''), (row.detail||''), (row.cust||''), (row.stype||''), (row.cc||'')];
+      vals.forEach(function(v,ci) {
+        if (v) {
+          var maxW = colW[ci+1] - 2;
+          var str = v;
+          while (str.length > 2 && doc.getTextWidth(str) > maxW) str = str.slice(0,-1);
+          doc.text(str, cxs[ci+1]+1, y+4.5);
+        }
+      });
+      if (row.amt) {
+        doc.text((row.amt||''), cxs[nc]-1, y+4.5, {align:'right'});
+        total += parseFloat((row.amt||'').replace(/,/g,'')) || 0;
+      }
+    }
+    y += drh;
+  }
+
+  // Left/right borders for data rows
+  doc.setLineWidth(0.5);
+  doc.line(m,  dataTop, m,  y);
+  doc.line(rm, dataTop, rm, y);
+
+  // TOTAL row
+  var trh = 8;
+  doc.setLineWidth(0.5); doc.rect(m, y, tw, trh);
+  for (var ji=1; ji<nc; ji++) { doc.setLineWidth(0.3); doc.line(cxs[ji], y, cxs[ji], y+trh); }
+  doc.setFont('helvetica','bold'); doc.setFontSize(8);
+  doc.text('TOTAL', (cxs[0]+cxs[nc-2])/2, y+5.5, {align:'center'});
+  doc.setFontSize(8);
+  var totalStr = isNaN(total) ? '0.00' : total.toLocaleString('en-PK',{minimumFractionDigits:2});
+  doc.text(totalStr, cxs[nc]-1, y+5.5, {align:'right'});
+  y += trh + 8;
+
+  // Signatures
+  doc.setFont('helvetica','bold'); doc.setFontSize(8);
+  doc.text('SIGNATURES and APPROVALS', m, y);
+  doc.text('Notes:', m+80, y);
+  y += 8;
+  doc.setFont('helvetica','normal'); doc.setFontSize(8);
+  doc.text((d.emp||'Mateen Arif'),           m,      y);
+  doc.text((d.mgr||'Mr. Ghazanfal Ali'),     m+80,   y);
+  doc.text((d.rd||'Hussain Khan'),     m+140,  y);
+  y += 18;
+  // Embed traveler signature between name and line
+  if(sigDataURL){
+    doc.addImage(sigDataURL,'PNG', m, y-16, 42, 14);
+  }
+  doc.setLineWidth(0.3);
+  doc.line(m, y, m+42, y);
+  doc.line(m+80, y, m+125, y);
+  doc.line(m+140, y, rm, y);
+  [[m,'Signature:','Project Engineer'],
+   [m+80,'Signature:','Operations Lead'],
+   [m+140,'Signature:','VP']].forEach(function(x) {
+    doc.setFont('helvetica','normal'); doc.setFontSize(8);
+    doc.text(x[1], x[0], y+5);
+    doc.text(x[2], x[0], y+10);
+  });
+}
+
+
+
+
+// ── Receipts page ────────────────────────────────────────────────────────────
+async function drawRcptPage(doc, receipts) {
+  var W=210, H=297, m=15, cols=2, rows=3;
+  doc.setFont('helvetica','bold'); doc.setFontSize(12);
+  doc.text('RECEIPTS / SUPPORTING DOCUMENTS', m, m+6);
+  doc.setLineWidth(0.4); doc.line(m, m+9, W-m, m+9);
+
+  var cw=(W-2*m-4)/cols, ch=(H-2*m-22)/rows, pad=3;
+  var idx=0, pg=0;
+
+  while(idx < receipts.length) {
+    if(pg > 0) {
+      doc.addPage();
+      doc.setFont('helvetica','bold'); doc.setFontSize(12);
+      doc.text('RECEIPTS (cont.)', m, m+6);
+      doc.setLineWidth(0.4); doc.line(m, m+9, W-m, m+9);
+    }
+    var ci=0, ri=0;
+    while(idx < receipts.length && ri < rows) {
+      var cx = m + ci*(cw+4);
+      var cy = m + 22 + ri*ch;
+      doc.setLineWidth(0.3); doc.rect(cx, cy, cw, ch-pad);
+      doc.setFont('helvetica','bold'); doc.setFontSize(7);
+      var label = 'Receipt '+(idx+1)+': '+receipts[idx].name.substring(0,40);
+      doc.text(label, cx+pad, cy+pad+3);
+      try {
+        var dataUrl = receipts[idx].url;
+        var parts = dataUrl.split(',');
+        var mime  = parts[0].split(':')[1].split(';')[0];
+        var ext   = mime.indexOf('png') >= 0 ? 'PNG' : 'JPEG';
+        var imgD  = parts[1];
+        var tmp   = new Image();
+        tmp.src   = dataUrl;
+        await new Promise(function(res){ tmp.onload=res; tmp.onerror=res; });
+        var iw=tmp.naturalWidth||200, ih=tmp.naturalHeight||200;
+        var avW=cw-2*pad, avH=ch-pad-12;
+        var scale=Math.min(avW/iw, avH/ih);
+        var dw=iw*scale, dh=ih*scale;
+        var dx=cx+(cw-dw)/2, dy=cy+12+(avH-dh)/2;
+        doc.addImage(imgD, ext, dx, dy, dw, dh);
+      } catch(e) {
+        doc.setFont('helvetica','normal'); doc.setFontSize(8);
+        doc.text('Could not load image', cx+pad, cy+ch/2);
+      }
+      ci++; idx++;
+      if(ci >= cols){ ci=0; ri++; }
+    }
+    pg++;
+  }
+}
+</script>
+</body>
+</html>
