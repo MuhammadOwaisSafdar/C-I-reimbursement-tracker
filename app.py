@@ -8,7 +8,7 @@ import io
 import json
 import zipfile
 import base64
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import streamlit as st
@@ -116,11 +116,12 @@ def load_dataframe(employee_filter=None):
     rows = db.get_all_bills(employee_name=employee_filter)
     cols = ["id", "employee_name", "description", "date_submitted", "period", "bill_amount",
             "reimbursed_amount", "clearing_date", "screenshot_path", "approved_pdf_path", "remarks",
-            "approval_status", "netsuite_status", "netsuite_upload_date"]
+            "approval_status", "netsuite_status", "netsuite_upload_date", "billing_month"]
     if not rows:
         return pd.DataFrame(columns=cols)
     df = pd.DataFrame(rows)
-    df["month"] = df["date_submitted"].apply(calc.month_name)
+    df["month"] = df.apply(
+        lambda r: calc.billing_month_label(r["billing_month"]) or calc.month_name(r["date_submitted"]), axis=1)
     df["balance_due"] = df.apply(lambda r: calc.balance_due(r["bill_amount"], r["reimbursed_amount"]), axis=1)
     df["status"] = df.apply(lambda r: calc.status(r["bill_amount"], r["reimbursed_amount"]), axis=1)
     df["days_outstanding"] = df.apply(
@@ -294,7 +295,9 @@ with tabs[0]:
     balance_outstanding = df["balance_due"].sum() if not df.empty else 0
     fully_cleared = (df["status"] == "Cleared").sum() if not df.empty else 0
     still_open = total_bills - fully_cleared
-    late_count = df["date_submitted"].apply(calc.is_late_submission).sum() if not df.empty else 0
+    late_count = df.apply(
+        lambda r: calc.is_late_submission(r["date_submitted"], r["billing_month"]), axis=1).sum() \
+        if not df.empty else 0
     pending_approval = (df["approval_status"] == "Pending Approval").sum() if not df.empty else 0
 
     row1 = st.columns(4)
@@ -385,8 +388,9 @@ with tabs[1]:
             lambda p: "Attached" if file_exists(p) else "None")
         display_df["Approved PDF"] = display_df["approved_pdf_path"].apply(
             lambda p: "Attached" if file_exists(p) else "None")
-        display_df["Submission"] = display_df["date_submitted"].apply(
-            lambda d: "Late (after 3rd)" if calc.is_late_submission(d) else "On time")
+        display_df["Submission"] = display_df.apply(
+            lambda r: "Late" if calc.is_late_submission(r["date_submitted"], r["billing_month"]) else "On time",
+            axis=1)
 
         show_cols = ["id", "employee_name", "description", "date_submitted", "Submission", "period", "month",
                      "bill_amount", "reimbursed_amount", "balance_due", "status", "approval_status",
@@ -522,7 +526,11 @@ with tabs[1]:
 # ---------------------------------------------------------------
 with tabs[2]:
     st.subheader("Add a new bill")
-    st.info("Company rule: bills must be submitted on or before the 3rd of the month.")
+    st.info(
+        "Company rule: a bill must be submitted on or before the 3rd of the month "
+        "AFTER the billing month it covers — e.g. an August bill can be submitted "
+        "any time up to 3 September."
+    )
     with st.form("add_bill_form", clear_on_submit=True):
         if is_manager:
             employee_name = st.selectbox("Employee", auth.all_employee_names())
@@ -531,6 +539,13 @@ with tabs[2]:
             st.text_input("Employee", value=employee_name, disabled=True)
 
         description = st.text_input("Bill / Expense Description")
+
+        month_names = ["January", "February", "March", "April", "May", "June",
+                       "July", "August", "September", "October", "November", "December"]
+        prev_month_date = (date.today().replace(day=1) - timedelta(days=1))
+        default_month_index = prev_month_date.month - 1
+        default_year = prev_month_date.year
+
         col1, col2 = st.columns(2)
         with col1:
             date_submitted = st.date_input("Date of Submission", value=date.today())
@@ -538,26 +553,40 @@ with tabs[2]:
             has_clearing_date = st.checkbox("Clearing date known?")
             clearing_date = st.date_input("Clearing Date", value=date.today()) if has_clearing_date else None
         with col2:
-            period = st.text_input("Period (e.g. 1 Aug - 5 Aug 2026)")
+            bmcol1, bmcol2 = st.columns(2)
+            with bmcol1:
+                billing_month_name = st.selectbox(
+                    "Billing Month — which month's expenses is this for?",
+                    month_names, index=default_month_index)
+            with bmcol2:
+                billing_year = st.number_input(
+                    "Year", min_value=2020, max_value=2100, value=default_year, step=1)
+            period = st.text_input("Period (e.g. 1 Aug - 15 Aug 2026)")
             reimbursed_amount = st.number_input("Reimbursed Amount so far", min_value=0.0, step=100.0)
             screenshot = st.file_uploader("Screenshot (optional)", type=["png", "jpg", "jpeg"])
             approved_pdf = st.file_uploader("Original approved bill PDF (optional)", type=["pdf"])
         remarks = st.text_area("Remarks")
 
+        billing_month_value = date(int(billing_year), month_names.index(billing_month_name) + 1, 1)
+        deadline = calc.billing_deadline(billing_month_value)
+        st.caption(f"Deadline to submit a {billing_month_name} {billing_year} bill: {deadline.strftime('%d %b %Y')}")
+
         manager_override = False
         if is_manager:
             manager_override = st.checkbox(
-                "Confirm late submission (only needed if Date of Submission is after the 3rd)")
+                "Confirm late submission (only needed if past the deadline shown above)")
 
         submitted = st.form_submit_button("Save bill", type="primary")
         if submitted:
-            late = calc.is_late_submission(date_submitted)
+            late = calc.is_late_submission(date_submitted, billing_month_value)
             if not description.strip():
                 st.error("Bill description is required.")
             elif late and not is_manager:
                 st.error(
-                    "Bills must be submitted on or before the 3rd of the month. "
-                    "This date is late — please ask your manager to add it if it must be backdated.")
+                    f"A {billing_month_name} {billing_year} bill must be submitted by "
+                    f"{deadline.strftime('%d %b %Y')}. This is late — please ask your "
+                    f"manager to add it if it must be backdated."
+                )
             elif late and is_manager and not manager_override:
                 st.error("Check the confirmation box above to save a late submission.")
             else:
@@ -572,6 +601,7 @@ with tabs[2]:
                     screenshot_path=None,
                     approved_pdf_path=None,
                     remarks=remarks.strip(),
+                    billing_month=billing_month_value.isoformat(),
                 )
                 new_id = db.get_all_bills()[-1]["id"]
                 shot_path = save_uploaded_file(screenshot, new_id, "shot") if screenshot else None
@@ -735,3 +765,88 @@ if is_manager:
                         auth.save_users(parsed)
                         st.success("Team credentials restored. Please sign out and back in.")
                         st.rerun()
+
+        st.divider()
+        st.subheader("Backup / restore bill data")
+        st.caption(
+            "This is the important one — it covers every bill: amounts, statuses, "
+            "approvals, NetSuite tracking, and archive history. Download it regularly "
+            "(e.g. after closing each month) and keep the file somewhere safe. If this "
+            "app's storage ever gets wiped, restore from here instead of losing everything."
+        )
+
+        all_bills_backup = db.get_all_bills(include_archived=True)
+        bills_backup_json = json.dumps(all_bills_backup, indent=2)
+        st.download_button(
+            f"Download bill data backup ({len(all_bills_backup)} bills)",
+            data=bills_backup_json,
+            file_name=f"bills_backup_{date.today().isoformat()}.json",
+            mime="application/json",
+        )
+
+        # Attachments (screenshots + approved PDFs) live on disk, separate from the database.
+        attachment_files = [f for f in os.listdir(db.SCREENSHOT_DIR)
+                             if os.path.isfile(os.path.join(db.SCREENSHOT_DIR, f))]
+        if attachment_files:
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                for fname in attachment_files:
+                    zf.write(os.path.join(db.SCREENSHOT_DIR, fname), arcname=fname)
+            zip_buffer.seek(0)
+            st.download_button(
+                f"Download attachments backup ({len(attachment_files)} files — screenshots & PDFs)",
+                data=zip_buffer,
+                file_name=f"attachments_backup_{date.today().isoformat()}.zip",
+                mime="application/zip",
+            )
+        else:
+            st.caption("No attachments uploaded yet, nothing to back up there.")
+
+        st.write("")
+        st.markdown("**Restore bill data**")
+        restore_bills_file = st.file_uploader("Restore from a bill data backup (.json)", type=["json"], key="restore_bills")
+        if restore_bills_file is not None:
+            try:
+                parsed_bills = json.loads(restore_bills_file.getvalue().decode("utf-8"))
+            except Exception:
+                st.error("That file isn't valid JSON — is it really a backup file from this app?")
+                parsed_bills = None
+            if parsed_bills is not None:
+                ok, message = db.validate_bills_backup(parsed_bills)
+                if not ok:
+                    st.error(message)
+                else:
+                    st.info(message)
+                    st.warning(
+                        "This will completely replace every current bill with what's in this "
+                        "file. If you also have an attachments ZIP backup, restore that too "
+                        "so screenshots and PDFs still match up."
+                    )
+                    if st.button("Confirm restore of bill data", type="primary"):
+                        try:
+                            db.replace_all_bills(parsed_bills)
+                            st.success(f"Restored {len(parsed_bills)} bill(s).")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Restore failed: {e}")
+
+        st.markdown("**Restore attachments**")
+        restore_zip_file = st.file_uploader("Restore from an attachments backup (.zip)", type=["zip"], key="restore_attachments")
+        if restore_zip_file is not None:
+            st.warning("This will replace every file currently in the attachments folder with what's in this ZIP.")
+            if st.button("Confirm restore of attachments", type="primary"):
+                try:
+                    with zipfile.ZipFile(io.BytesIO(restore_zip_file.getvalue())) as zf:
+                        names = zf.namelist()
+                        if any(os.path.isabs(n) or ".." in n.split("/") for n in names):
+                            st.error("This ZIP contains unsafe file paths and was not restored.")
+                        else:
+                            for existing in os.listdir(db.SCREENSHOT_DIR):
+                                existing_path = os.path.join(db.SCREENSHOT_DIR, existing)
+                                if os.path.isfile(existing_path):
+                                    os.remove(existing_path)
+                            zf.extractall(db.SCREENSHOT_DIR)
+                            st.success(f"Restored {len(names)} attachment file(s).")
+                            st.rerun()
+                except zipfile.BadZipFile:
+                    st.error("That file isn't a valid ZIP archive.")

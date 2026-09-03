@@ -47,9 +47,36 @@ def days_outstanding(date_submitted, bill_amount, reimbursed_amount, today=None)
     return (today - d).days
 
 
-def is_late_submission(date_submitted):
-    """Company rule: bills must be submitted on or before the 3rd of the month."""
+def is_late_submission(date_submitted, billing_month=None):
+    """Company rule: a bill for a given billing month must be submitted on or before
+    the 3rd of the following month. billing_month is any date within the month the
+    bill covers (e.g. any date in August for an August bill) — the day is ignored.
+
+    If billing_month isn't provided (older bills saved before this field existed),
+    falls back to the old rule: submitted on or before the 3rd of the month it was
+    literally submitted in.
+    """
     d = parse_date(date_submitted)
     if d is None:
         return False
-    return d.day > 3
+    if billing_month is None:
+        return d.day > 3
+    bm = parse_date(billing_month)
+    if bm is None:
+        return d.day > 3
+    deadline = billing_deadline(bm)
+    return d > deadline
+
+
+def billing_deadline(billing_month):
+    """The 3rd of the month after the given billing month (any date within it)."""
+    bm = parse_date(billing_month)
+    year = bm.year + (bm.month // 12)
+    month = bm.month % 12 + 1
+    return date(year, month, 3)
+
+
+def billing_month_label(billing_month):
+    """Human-readable label, e.g. 'August 2026'. Empty string if not set."""
+    bm = parse_date(billing_month)
+    return bm.strftime("%B %Y") if bm else ""

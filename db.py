@@ -39,7 +39,8 @@ def init_db():
             netsuite_status TEXT NOT NULL DEFAULT 'Not Uploaded',
             netsuite_upload_date TEXT,
             archived INTEGER NOT NULL DEFAULT 0,
-            archived_date TEXT
+            archived_date TEXT,
+            billing_month TEXT
         )
         """
     )
@@ -55,23 +56,27 @@ def init_db():
         conn.execute("ALTER TABLE bills ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
     if "archived_date" not in existing_cols:
         conn.execute("ALTER TABLE bills ADD COLUMN archived_date TEXT")
+    if "billing_month" not in existing_cols:
+        conn.execute("ALTER TABLE bills ADD COLUMN billing_month TEXT")
     conn.commit()
     conn.close()
 
 
 def add_bill(employee_name, description, date_submitted, period, bill_amount,
              reimbursed_amount, clearing_date, screenshot_path, approved_pdf_path, remarks,
-             approval_status="Pending Approval"):
+             approval_status="Pending Approval", billing_month=None):
     conn = get_connection()
     conn.execute(
         """
         INSERT INTO bills
             (employee_name, description, date_submitted, period, bill_amount,
-             reimbursed_amount, clearing_date, screenshot_path, approved_pdf_path, remarks, approval_status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             reimbursed_amount, clearing_date, screenshot_path, approved_pdf_path, remarks,
+             approval_status, billing_month)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (employee_name, description, date_submitted, period, bill_amount,
-         reimbursed_amount, clearing_date, screenshot_path, approved_pdf_path, remarks, approval_status),
+         reimbursed_amount, clearing_date, screenshot_path, approved_pdf_path, remarks,
+         approval_status, billing_month),
     )
     conn.commit()
     conn.close()
@@ -79,22 +84,26 @@ def add_bill(employee_name, description, date_submitted, period, bill_amount,
 
 def update_bill(bill_id, employee_name, description, date_submitted, period, bill_amount,
                  reimbursed_amount, clearing_date, screenshot_path, approved_pdf_path, remarks,
-                 approval_status=None):
+                 approval_status=None, billing_month=None):
     conn = get_connection()
+    existing = conn.execute(
+        "SELECT approval_status, billing_month FROM bills WHERE id = ?", (bill_id,)
+    ).fetchone()
     if approval_status is None:
-        existing = conn.execute("SELECT approval_status FROM bills WHERE id = ?", (bill_id,)).fetchone()
         approval_status = existing["approval_status"] if existing else "Pending Approval"
+    if billing_month is None:
+        billing_month = existing["billing_month"] if existing else None
     conn.execute(
         """
         UPDATE bills
         SET employee_name = ?, description = ?, date_submitted = ?, period = ?, bill_amount = ?,
             reimbursed_amount = ?, clearing_date = ?, screenshot_path = ?, approved_pdf_path = ?, remarks = ?,
-            approval_status = ?
+            approval_status = ?, billing_month = ?
         WHERE id = ?
         """,
         (employee_name, description, date_submitted, period, bill_amount,
          reimbursed_amount, clearing_date, screenshot_path, approved_pdf_path, remarks,
-         approval_status, bill_id),
+         approval_status, billing_month, bill_id),
     )
     conn.commit()
     conn.close()
@@ -186,3 +195,49 @@ def get_bill(bill_id):
     row = conn.execute("SELECT * FROM bills WHERE id = ?", (bill_id,)).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def replace_all_bills(bills):
+    """Wipes the whole bills table and reloads it from a backup list of dicts, as
+    produced by get_all_bills(include_archived=True). Bill IDs are preserved so
+    attachment filenames (which are named by bill id) still line up correctly.
+    Raises ValueError if the data doesn't look like a valid backup."""
+    if not isinstance(bills, list):
+        raise ValueError("Backup must be a list of bill records.")
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM bills")
+        for b in bills:
+            if not isinstance(b, dict) or "id" not in b:
+                raise ValueError("Every record needs at least an 'id' field.")
+            cols = list(b.keys())
+            placeholders = ", ".join(["?"] * len(cols))
+            col_list = ", ".join(cols)
+            conn.execute(f"INSERT INTO bills ({col_list}) VALUES ({placeholders})", [b[c] for c in cols])
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def validate_bills_backup(data):
+    """Checks a parsed bills backup file has the right shape before it's allowed to
+    overwrite live data. Returns (ok: bool, message: str)."""
+    if not isinstance(data, list):
+        return False, "File isn't a valid backup — expected a list of bill records."
+    if len(data) == 0:
+        return True, "Backup is empty — restoring this will clear all bills."
+    required = {"id", "employee_name", "description", "date_submitted", "bill_amount", "reimbursed_amount"}
+    seen_ids = set()
+    for i, b in enumerate(data):
+        if not isinstance(b, dict):
+            return False, f"Entry #{i + 1} isn't a valid bill record."
+        missing = required - set(b.keys())
+        if missing:
+            return False, f"Entry #{i + 1} is missing: {', '.join(missing)}."
+        if b["id"] in seen_ids:
+            return False, f"Duplicate bill id in backup: {b['id']}."
+        seen_ids.add(b["id"])
+    return True, f"Looks valid — {len(data)} bill record(s)."

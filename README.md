@@ -72,11 +72,18 @@ small note explains that email isn't configured instead of failing.
 
 ## Submission deadline rule
 
-Bills must be dated on or before the 3rd of the month. An employee trying to save a
-later date gets blocked with an explanation. The manager can still add a late entry,
-but must tick a confirmation checkbox first. Every bill list shows a "Submission"
-column (On time / Late) so this is visible at a glance, and the Dashboard has a
-"Late Submissions" count.
+Every bill now has its own **Billing Month** (which month's expenses it covers),
+separate from the Date of Submission (when it's actually being entered). The rule:
+a bill for a given billing month must be submitted on or before the 3rd of the
+*following* month — so an August bill can be added any time up to 3 September,
+even though the submission date itself is in September. The Add New Bill form
+defaults the Billing Month to last month, shows the exact deadline as you pick a
+month, and blocks an employee from saving past it with an explanation. The manager
+can still add a late entry, but must tick a confirmation checkbox first. Every bill
+list shows a "Submission" column (On time / Late) so this is visible at a glance,
+and the Dashboard has a "Late Submissions" count. Bills saved before this feature
+existed (no Billing Month set) fall back to the old rule of "submitted on or before
+the 3rd of whatever month it was literally submitted in."
 
 ## Setup (one time)
 
@@ -131,5 +138,13 @@ credentials" and click "Download team credentials backup" any time you've added
 or changed accounts. Keep that file somewhere safe on your computer. If a reboot
 or redeploy ever wipes the logins, upload that same file back in on that same
 screen and click Confirm restore — no need to re-add everyone by hand. This only
-covers logins, not the bills themselves; the bigger persistence fix above would
-cover both.
+covers logins, not the bills themselves.
+
+**Bill data — this is the important one.** Go to Manage Team > "Backup / restore
+bill data" and download two things regularly (e.g. right after closing each
+month): the bill data backup (a `.json` with every bill, amount, status, approval,
+and archive record) and the attachments backup (a `.zip` of every screenshot and
+approved PDF). Keep both somewhere safe. If storage ever gets wiped, upload the
+`.json` back in under "Restore bill data" and confirm — bill IDs are preserved, so
+if you also restore the attachments `.zip`, screenshots and PDFs line back up
+correctly with the right bills automatically.
