@@ -657,11 +657,73 @@ with tabs[2]:
         ec_deadline = calc.billing_deadline(ec_billing_month_value)
         st.caption(f"Deadline to submit a {ec_month_name} {ec_year} claim: {ec_deadline.strftime('%d %b %Y')}")
 
-        st.markdown("**Expense Rows**")
         if "expense_rows_df" not in st.session_state:
             st.session_state["expense_rows_df"] = pd.DataFrame(
                 [{"date": date.today().isoformat(), "detail": "", "amount": 0.0}])
 
+        with st.expander("Auto-Calculate — Food (DA) and Fuel", expanded=False):
+            st.caption("Same rates as the travel request form. Fill these in, then use the buttons to add rows to the expense table below.")
+
+            st.markdown("*Food / Daily Allowance*")
+            acol1, acol2, acol3 = st.columns(3)
+            with acol1:
+                ac_dep = st.date_input("Departure Date", value=date.today(), key="ac_dep")
+            with acol2:
+                ac_ret = st.date_input("Return Date", value=date.today(), key="ac_ret")
+            with acol3:
+                ac_level = st.selectbox(
+                    "Management Level", ["upper", "middle", "junior"],
+                    format_func=lambda x: {"upper": "Upper", "middle": "Middle", "junior": "Junior"}[x],
+                    key="ac_level")
+
+            ac_days = calc.trip_days(ac_dep, ac_ret)
+            ac_same_day = (ac_days == 1)
+            ac_rate, ac_label = calc.food_da_rate(ac_level, ac_same_day)
+
+            if ac_days == 0:
+                st.caption("Set a valid Departure/Return date range to calculate.")
+            else:
+                if ac_rate is None:
+                    ac_manual_rate = st.number_input(
+                        "Amount/day (Upper level is as-per-actual — enter the rate)",
+                        min_value=0.0, step=100.0, key="ac_manual_rate")
+                    ac_food_total = ac_manual_rate * ac_days
+                else:
+                    ac_manual_rate = ac_rate
+                    ac_food_total = ac_rate * ac_days
+                st.caption(f"{ac_days} day(s) — {ac_label} — Total: PKR {ac_food_total:,.2f}")
+
+                if st.button("Add Food Allowance rows (one per day)", key="ac_add_food"):
+                    new_rows = [
+                        {"date": d, "detail": f"Food / Daily Allowance ({ac_label})", "amount": ac_manual_rate}
+                        for d in calc.trip_day_range(ac_dep, ac_ret)
+                    ]
+                    current = st.session_state["expense_rows_df"]
+                    current = current[current["detail"].fillna("").str.strip() != ""]
+                    st.session_state["expense_rows_df"] = pd.concat(
+                        [current, pd.DataFrame(new_rows)], ignore_index=True)
+                    st.session_state.pop("expense_rows_editor", None)
+                    st.rerun()
+
+            st.divider()
+            st.markdown("*Fuel — Own Vehicle (Rs. 15/km)*")
+            fcol1, fcol2 = st.columns(2)
+            with fcol1:
+                ac_km = st.number_input("Distance (km)", min_value=0.0, step=10.0, key="ac_km")
+            with fcol2:
+                ac_fuel_date = st.date_input("Date", value=date.today(), key="ac_fuel_date")
+            ac_fuel_amount = calc.fuel_amount(ac_km)
+            st.caption(f"{ac_km:.0f} km × Rs. 15 = PKR {ac_fuel_amount:,.2f}")
+            if st.button("Add Fuel row", key="ac_add_fuel"):
+                new_row = {"date": ac_fuel_date.isoformat(), "detail": "Own Vehicle Fuel (Rs. 15/km)", "amount": ac_fuel_amount}
+                current = st.session_state["expense_rows_df"]
+                current = current[current["detail"].fillna("").str.strip() != ""]
+                st.session_state["expense_rows_df"] = pd.concat(
+                    [current, pd.DataFrame([new_row])], ignore_index=True)
+                st.session_state.pop("expense_rows_editor", None)
+                st.rerun()
+
+        st.markdown("**Expense Rows**")
         edited_rows = st.data_editor(
             st.session_state["expense_rows_df"],
             num_rows="dynamic",
@@ -676,6 +738,11 @@ with tabs[2]:
 
         ec_total = float(edited_rows["amount"].fillna(0).sum()) if not edited_rows.empty else 0.0
         st.metric("Total", f"PKR {ec_total:,.2f}")
+
+        st.markdown("**Receipts**")
+        ec_receipts = st.file_uploader(
+            "Add receipt images (optional — appear on a Receipts page in the PDF)",
+            type=["png", "jpg", "jpeg"], accept_multiple_files=True, key="ec_receipts")
 
         st.markdown("**Signatories**")
         scol1, scol2, scol3 = st.columns(3)
@@ -725,6 +792,14 @@ with tabs[2]:
                 )
                 new_id = db.get_all_bills()[-1]["id"]
 
+                receipt_paths = []
+                for i, rfile in enumerate(ec_receipts or []):
+                    ext = os.path.splitext(rfile.name)[1] or ".jpg"
+                    rpath = os.path.join(db.SCREENSHOT_DIR, f"bill_{new_id}_receipt{i+1}{ext}")
+                    with open(rpath, "wb") as f:
+                        f.write(rfile.getbuffer())
+                    receipt_paths.append(rpath)
+
                 pdf_path = os.path.join(db.SCREENSHOT_DIR, f"bill_{new_id}_pdf.pdf")
                 header = {
                     "company": "SkyElectric", "department": "C&I Operations",
@@ -738,7 +813,7 @@ with tabs[2]:
                     for _, r in valid_rows.iterrows()
                 ]
                 signatories = {"employee": ec_sig_employee, "ops_lead": ec_sig_ops, "vp": ec_sig_vp}
-                expense_pdf.build_expense_pdf(pdf_path, header, pdf_rows, signatories)
+                expense_pdf.build_expense_pdf(pdf_path, header, pdf_rows, signatories, receipts=receipt_paths)
 
                 bill = db.get_bill(new_id)
                 db.update_bill(new_id, bill["employee_name"], bill["description"], bill["date_submitted"],
@@ -746,6 +821,7 @@ with tabs[2]:
                                 bill["clearing_date"], bill["screenshot_path"], pdf_path, bill["remarks"])
 
                 del st.session_state["expense_rows_df"]
+                st.session_state.pop("expense_rows_editor", None)
                 st.session_state["last_added_bill"] = new_id
                 st.rerun()
 

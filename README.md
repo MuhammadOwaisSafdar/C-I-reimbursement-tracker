@@ -70,6 +70,31 @@ small note explains that email isn't configured instead of failing.
   (blocked after the 3rd of the month — see below), and can view their own approval
   status, but cannot approve bills or see anyone else's data.
 
+## SkyElectric Expense Claim (auto-generated PDF)
+
+On the Add New Bill tab, choose "SkyElectric Expense Claim" instead of "Simple
+bill" to fill out the same fields as the standalone expense claim form — Month,
+Expense Type, Reason, Cost Centre, Sale Order No., Customer, Sale Type, a table
+of expense rows (add/remove rows freely), and signatories. Pressing "Save Expense
+Claim" does everything in one step: creates the bill (amount set to the sum of
+the rows) and generates a matching PDF automatically, attached as the approved
+bill PDF — no separate step of filling the old HTML form, printing to PDF, and
+uploading it here. This uses `reportlab` to build the PDF, so it doesn't
+pixel-match the original branded form, but it contains the same information in a
+clean, professional layout. The PDF also carries your actual SkyElectric logo and
+brand colors, and a second Receipts page (2-column photo grid, paginated) when
+you upload receipt images.
+
+Within that mode, an **"Auto-Calculate — Food (DA) and Fuel"** expander replicates
+the original form's Smart Wizard rates: pick Departure/Return dates and a
+Management Level (Upper/Middle/Junior) and it works out the daily food allowance
+exactly like the HTML tool did — Rs. 1,000/day fixed for Junior, Rs. 3,000/day
+overnight or Rs. 2,000/day same-day for Middle, and an editable as-per-actual rate
+for Upper — then adds one row per day to the expense table with one click. Same
+for fuel: enter kilometers and it calculates Rs. 15/km and adds that as a row too.
+Both just populate the same editable Expense Rows table above, so anything added
+this way can still be edited or removed by hand afterward.
+
 ## Submission deadline rule
 
 Every bill now has its own **Billing Month** (which month's expenses it covers),
@@ -106,6 +131,7 @@ Opens at `http://localhost:8501`.
 - `calc.py` — balance / status / late-submission calculations
 - `auth.py` — user accounts (stored in `users.json`, created on first run)
 - `notify.py` — sends the manager email when a new bill is submitted
+- `expense_pdf.py` — builds the SkyElectric Expense Claim PDF automatically
 - `.streamlit/secrets.toml.example` — template for email settings (copy and fill in)
 - `reimbursements.db` — created automatically on first run
 - `screenshots/` — uploaded screenshots and approved-bill PDFs are saved here
