@@ -56,10 +56,14 @@ small note explains that email isn't configured instead of failing.
 
 ## What each role sees
 
+- **Admin** — everything a Manager can do, plus exclusive access to Manage Team:
+  adding/removing team members, changing anyone's role (employee/manager/handler/
+  admin), resetting anyone's password, viewing stored passwords, and the credential
+  and bill-data backup/restore tools.
 - **Manager** — Dashboard and All Bills show every employee's bills (with a filter
   to view one person at a time), can add a bill on behalf of any team member,
-  approve/disapprove bills, edit or delete any bill, and manages team accounts in
-  Manage Team.
+  approve/disapprove bills, edit or delete any bill. Does NOT have access to
+  Manage Team — that's admin-only now.
 - **Handler / Draftsman** — a separate role for whoever actually uploads approved
   bills into NetSuite. Sees only bills the manager has already Approved, tracks
   each one as "Not Uploaded" or "Uploaded" (with the date), can view or download
@@ -69,6 +73,14 @@ small note explains that email isn't configured instead of failing.
 - **Employee** — sees only their own bills and dashboard, can add their own bills
   (blocked after the 3rd of the month — see below), and can view their own approval
   status, but cannot approve bills or see anyone else's data.
+
+Everyone, regardless of role, can change their own password from the sidebar —
+no admin needed for that.
+
+Existing deployments migrate automatically: the first time this update runs, the
+account with the "manager" role gets promoted to "admin" (same login, new rights),
+so there's always someone able to grant admin rights to others. This happens once,
+silently, the first time the app loads after updating.
 
 ## SkyElectric Expense Claim Form (your original tool, opened directly)
 

@@ -105,7 +105,8 @@ if st.session_state.user is None:
     st.stop()
 
 current_user = st.session_state.user
-is_manager = current_user["role"] == "manager"
+is_admin = current_user["role"] == "admin"
+is_manager = current_user["role"] in ("manager", "admin")
 is_handler = current_user["role"] == "handler"
 
 # ---------------------------------------------------------------
@@ -190,10 +191,31 @@ if st.sidebar.button("Sign out"):
     st.session_state.user = None
     st.rerun()
 
+with st.sidebar.expander("Change password"):
+    with st.form("change_password_form", clear_on_submit=True):
+        cp_current = st.text_input("Current password", type="password")
+        cp_new = st.text_input("New password", type="password")
+        cp_confirm = st.text_input("Confirm new password", type="password")
+        cp_submitted = st.form_submit_button("Update password")
+        if cp_submitted:
+            if auth.check_login(current_user["username"], cp_current) is None:
+                st.error("Current password is incorrect.")
+            elif not cp_new:
+                st.error("Enter a new password.")
+            elif cp_new != cp_confirm:
+                st.error("New password and confirmation don't match.")
+            elif cp_new == cp_current:
+                st.error("New password must be different from the current one.")
+            else:
+                auth.change_password(current_user["username"], cp_new)
+                st.success("Password updated. Use it next time you sign in.")
+
 st.title("Reimbursement Tracker")
 
 if is_manager:
-    tab_names = ["Dashboard", "All Bills", "Add New Bill", "Archive", "Manage Team"]
+    tab_names = ["Dashboard", "All Bills", "Add New Bill", "Archive"]
+    if is_admin:
+        tab_names.append("Manage Team")
 elif is_handler:
     tab_names = ["Dashboard", "Bills to Upload"]
 else:
@@ -798,16 +820,20 @@ with tabs[3]:
                 st.rerun()
 
 # ---------------------------------------------------------------
-# MANAGE TEAM (manager only)
+# MANAGE TEAM (admin only)
 # ---------------------------------------------------------------
-if is_manager:
+if is_admin:
     with tabs[4]:
         st.subheader("Team members")
         users = auth.load_users()
         team_df = pd.DataFrame(users)
         if "email" not in team_df.columns:
             team_df["email"] = ""
-        st.table(team_df[["display_name", "username", "role", "email"]].fillna(""))
+        show_passwords = st.checkbox("Show passwords")
+        cols_to_show = ["display_name", "username", "role", "email"]
+        if show_passwords:
+            cols_to_show.insert(2, "password")
+        st.table(team_df[cols_to_show].fillna(""))
 
         st.divider()
         st.subheader("Add a team member")
@@ -815,7 +841,7 @@ if is_manager:
             new_display = st.text_input("Full name (shown on bills)")
             new_username = st.text_input("Username (for login)")
             new_password = st.text_input("Password", type="password")
-            new_role = st.selectbox("Role", ["employee", "manager", "handler"])
+            new_role = st.selectbox("Role", ["employee", "manager", "handler", "admin"])
             new_email = st.text_input(
                 "Email (required for Handler/Draftsman — used to CC new-bill notifications)")
             add_clicked = st.form_submit_button("Add team member", type="primary")
@@ -842,6 +868,38 @@ if is_manager:
                 st.rerun()
         else:
             st.caption("No other team members to remove.")
+
+        st.divider()
+        st.subheader("Change a team member's rights")
+        st.caption("Only admins can change roles. Roles: employee, manager, handler, admin.")
+        if removable:
+            role_target = st.selectbox("Select username", removable, key="role_target")
+            current_role = next((u["role"] for u in users if u["username"] == role_target), "employee")
+            new_role_value = st.selectbox(
+                "New role", ["employee", "manager", "handler", "admin"],
+                index=["employee", "manager", "handler", "admin"].index(current_role),
+                key="role_new_value")
+            if st.button("Update role"):
+                auth.change_role(role_target, new_role_value)
+                st.success(f"{role_target}'s role changed to {new_role_value}.")
+                st.rerun()
+        else:
+            st.caption("No other team members to change.")
+
+        st.divider()
+        st.subheader("Reset a team member's password")
+        st.caption("Use this if someone forgot their password. They can also change it themselves once signed in, under 'Change password' in the sidebar.")
+        if removable:
+            pw_target = st.selectbox("Select username", removable, key="pw_target")
+            new_pw_value = st.text_input("New password", type="password", key="pw_new_value")
+            if st.button("Reset password"):
+                if not new_pw_value:
+                    st.error("Enter a new password.")
+                else:
+                    auth.change_password(pw_target, new_pw_value)
+                    st.success(f"{pw_target}'s password has been reset.")
+        else:
+            st.caption("No other team members to reset.")
 
         st.divider()
         st.subheader("Backup / restore team credentials")

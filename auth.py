@@ -17,9 +17,22 @@ DEFAULT_USERS = [
 def load_users():
     if not os.path.exists(USERS_PATH):
         save_users(DEFAULT_USERS)
-        return DEFAULT_USERS
-    with open(USERS_PATH, "r") as f:
-        return json.load(f)
+        users = list(DEFAULT_USERS)
+    else:
+        with open(USERS_PATH, "r") as f:
+            users = json.load(f)
+
+    # Migration: older deployments only had manager/employee roles. Ensure at least
+    # one admin exists by promoting the first manager account, so there's always
+    # someone able to grant admin rights to others going forward.
+    if not any(u.get("role") == "admin" for u in users):
+        for u in users:
+            if u.get("role") == "manager":
+                u["role"] = "admin"
+                save_users(users)
+                break
+
+    return users
 
 
 def save_users(users):
@@ -50,6 +63,34 @@ def delete_user(username):
     users = load_users()
     users = [u for u in users if u["username"] != username]
     save_users(users)
+
+
+def change_password(username, new_password):
+    """Updates a single user's password. Returns True if the account was found and updated."""
+    users = load_users()
+    found = False
+    for u in users:
+        if u["username"] == username:
+            u["password"] = new_password
+            found = True
+            break
+    if found:
+        save_users(users)
+    return found
+
+
+def change_role(username, new_role):
+    """Updates a single user's role. Returns True if the account was found and updated."""
+    users = load_users()
+    found = False
+    for u in users:
+        if u["username"] == username:
+            u["role"] = new_role
+            found = True
+            break
+    if found:
+        save_users(users)
+    return found
 
 
 def all_employee_names():
@@ -85,6 +126,6 @@ def validate_users_backup(data):
         if u["username"] in seen_usernames:
             return False, f"Duplicate username in backup: {u['username']}."
         seen_usernames.add(u["username"])
-    if not any(u.get("role") == "manager" for u in data):
-        return False, "Backup has no manager account — refusing to restore (you'd be locked out)."
-    return True, f"Looks valid — {len(data)} account(s), including at least one manager."
+    if not any(u.get("role") in ("manager", "admin") for u in data):
+        return False, "Backup has no manager or admin account — refusing to restore (you'd be locked out)."
+    return True, f"Looks valid — {len(data)} account(s)."
